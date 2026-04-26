@@ -173,6 +173,28 @@ sim.reset_all()
 | `update_running_norm()` | Recompute normalisation after a manual `set_amplitude` / `set_state_vector` |
 | `first_nonzero_phase()` | Phase of the lowest-index nonzero amplitude (rad) |
 
+### Pauli observables
+
+The `Pauli` enum (`PauliI`, `PauliX`, `PauliY`, `PauliZ`) is `IntEnum`-compatible — integer codes are accepted everywhere a `Pauli` is expected. Qrack's underlying values are non-sequential: `PauliI=0, PauliX=1, PauliZ=2, PauliY=3`.
+
+| Method | Description |
+|--------|-------------|
+| `measure_pauli(basis, qubit)` | Measure a qubit in a Pauli basis (rotates → measures → rotates back). Returns the post-rotation computational-basis bit (`True=\|1⟩`). `PauliI` is a no-op. |
+| `exp_val(basis, qubit)` | Single-qubit Pauli expectation value, in `[-1.0, 1.0]`. Does not collapse. |
+| `exp_val_pauli(paulis, qubits)` | Tensor-product Pauli expectation value `<ψ\|P₀⊗P₁⊗…\|ψ>`. |
+| `variance_pauli(paulis, qubits)` | Variance of a Pauli tensor-product observable, in `[0.0, 1.0]`. For Paulis, `Var(P) = 1 − <P>²`. |
+| `exp_val_all(basis)` | Broadcast a single basis across every qubit. |
+| `exp_val_floats(qubits, weights)` | Weighted-sum diagonal-observable expectation value. `weights` has length `2 * len(qubits)`: `[w₀_for_\|0⟩, w₀_for_\|1⟩, w₁_for_\|0⟩, w₁_for_\|1⟩, …]`. |
+| `variance_floats(qubits, weights)` | Variance counterpart to `exp_val_floats`. |
+
+```python
+from qrackbind import Pauli, QrackSimulator
+
+sim = QrackSimulator(qubitCount=2)
+sim.h(0); sim.cnot(0, 1)                              # Bell state
+print(sim.exp_val_pauli([Pauli.PauliZ, Pauli.PauliZ], [0, 1]))  # → 1.0
+```
+
 ### Dynamic qubit allocation
 
 | Method | Description |
@@ -199,6 +221,7 @@ The clone is fully independent — gates applied to one have no effect on the ot
 
 - **Complete gate coverage**: All standard quantum gates including Pauli (`x`, `y`, `z`), Hadamard (`h`), phase (`s`, `t`), rotations (`rx`, `ry`, `rz`, `r1`), general unitary (`u`, `u2`), multi-qubit gates (`cnot`, `cy`, `cz`, `swap`, `iswap`, `ccnot`), and multi-controlled / arbitrary-matrix variants
 - **Quantum arithmetic & QFT**: in-place add / sub, modular mul / div / pown (with controlled variants), logical shifts and rotations, QFT / IQFT
+- **Pauli observables**: `measure_pauli`, single- and multi-qubit `exp_val` / `variance_pauli`, weighted `exp_val_floats` / `variance_floats`, `IntEnum`-compatible `Pauli` enum
 - **NumPy state-vector access**: full state vector, probability vector, and reduced density matrix as zero-copy NumPy ndarrays; per-amplitude read / write
 - **Dynamic qubit allocation**: grow and shrink the register at runtime
 - **High performance**: Near-native C++ performance through nanobind

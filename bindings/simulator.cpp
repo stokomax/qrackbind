@@ -1,5 +1,6 @@
 #include "qrackbind_core.h"
 #include "qalu.hpp"
+#include <numeric>   // std::iota — used by exp_val_all
 #if ENABLE_OPENCL
 #include "common/oclengine.hpp"
 #endif
@@ -173,6 +174,59 @@ static void check_arithmetic(const QrackSim& s, const char* method)
         throw std::runtime_error(
             std::string(method) + ": isTensorNetwork=True is incompatible with "
             "arithmetic gates. Construct with isTensorNetwork=False.");
+}
+
+// ── Pauli-basis measurement helper ───────────────────────────────────────────
+// QInterface has no single "MeasurePauli" entry point — we manually rotate
+// the qubit into the computational basis, measure, and rotate back. The
+// rotation table mirrors pyqrack so behaviour is identical:
+//
+//   Basis   | rotate before M       | rotate back
+//   --------|-----------------------|----------------
+//   PauliI  | none                  | none
+//   PauliX  | H                     | H
+//   PauliY  | S†, H   (= SH adjoint)| H, S
+//   PauliZ  | none                  | none
+//
+// Returns true for the +1 eigenvalue, false for -1.
+static bool measure_in_basis(QrackSim& s, Qrack::Pauli basis, bitLenInt q)
+{
+    // The identity operator has trivial eigenvalue +1 — there is no
+    // observable to measure, so we short-circuit before touching the
+    // state. This matches pyqrack's behaviour and means
+    // measure_pauli(PauliI, q) is a no-op that returns False.
+    if (basis == Qrack::Pauli::PauliI)
+        return false;
+
+    switch (basis) {
+        case Qrack::Pauli::PauliX:
+            s.sim->H(q);
+            break;
+        case Qrack::Pauli::PauliY:
+            s.sim->IS(q);  // S†
+            s.sim->H(q);
+            break;
+        case Qrack::Pauli::PauliZ:
+        default:
+            break;
+    }
+
+    const bool result = s.sim->M(q);
+
+    switch (basis) {
+        case Qrack::Pauli::PauliX:
+            s.sim->H(q);
+            break;
+        case Qrack::Pauli::PauliY:
+            s.sim->H(q);
+            s.sim->S(q);
+            break;
+        case Qrack::Pauli::PauliZ:
+        default:
+            break;
+    }
+
+    return result;
 }
 
 
@@ -467,16 +521,143 @@ nb::class_<QrackSim>(m, "QrackSimulator",
             "4 * 2**len(controls) complex values — one 2x2 unitary per control permutation, "
             "in row-major order.")
 
-        // ── Pauli expectation value (deferred to pauli.cpp phase) ─────────
-        // When added, use Qrack::Pauli from pauli.hpp directly — do NOT
-        // redefine the enum. pauli.cpp will register it as:
-        //   nb::enum_<Qrack::Pauli>(m, "Pauli", nb::is_arithmetic())
-        //       .value("PauliI", Qrack::Pauli::PauliI)  ...
-        // and exp_val here will accept it with no casting:
-        //   .def("exp_val",
-        //       [](QrackSim& s, Qrack::Pauli basis, bitLenInt q) -> real1_f {
-        //           return s.sim->ExpectationBitsFactorized(...); },
-        //       nb::arg("basis"), nb::arg("qubit"))
+        // ── Pauli observables (Phase 4) ──────────────────────────────────
+        // The Pauli enum is registered in qrackbind_ext.cpp with
+        // nb::is_arithmetic(), so callers may pass either Pauli members
+        // or the underlying integer codes (Qrack's convention is
+        // PauliI=0, PauliX=1, PauliZ=2, PauliY=3 — note non-sequential).
+        .def("measure_pauli",
+            [](QrackSim& s, Qrack::Pauli basis, bitLenInt q) -> bool {
+                s.check_qubit(q, "measure_pauli");
+                return measure_in_basis(s, basis, q);
+            },
+            nb::arg("basis"), nb::arg("qubit"),
+            "Measure a qubit in the specified Pauli basis.\n\n"
+            "Rotates the qubit into the computational basis, measures, and\n"
+            "rotates back. Returns the same bit-valued bool as :meth:`measure`:\n"
+            "``True`` if the rotated qubit collapsed to ``|1>``, ``False`` for\n"
+            "``|0>``. For Pauli Z, this means ``True`` ↔ −1 eigenvalue and\n"
+            "``False`` ↔ +1 eigenvalue. The state is collapsed in the chosen\n"
+            "basis.\n\n"
+            "Example::\n\n"
+            "    sim.x(0)\n"
+            "    sim.measure_pauli(Pauli.PauliZ, 0)  # → True (|1>)")
+
+        .def("exp_val",
+            [](QrackSim& s, Qrack::Pauli basis, bitLenInt q) -> real1_f {
+                s.check_qubit(q, "exp_val");
+                return s.sim->ExpectationPauliAll({q}, {basis});
+            },
+            nb::arg("basis"), nb::arg("qubit"),
+            "Single-qubit Pauli expectation value.\n\n"
+            "Equivalent to ``exp_val_pauli([basis], [qubit])``. Result is\n"
+            "in [-1.0, +1.0]. Does not collapse the state.\n\n"
+            "Example::\n\n"
+            "    sim.h(0)\n"
+            "    print(sim.exp_val(Pauli.PauliX, 0))  # → 1.0")
+
+        .def("exp_val_pauli",
+            [](QrackSim& s,
+               std::vector<Qrack::Pauli> paulis,
+               std::vector<bitLenInt>    qubits) -> real1_f
+            {
+                if (paulis.size() != qubits.size())
+                    throw std::invalid_argument(
+                        "exp_val_pauli: paulis and qubits must have the same length");
+                for (auto q : qubits)
+                    s.check_qubit(q, "exp_val_pauli");
+                return s.sim->ExpectationPauliAll(qubits, paulis);
+            },
+            nb::arg("paulis"), nb::arg("qubits"),
+            "Expectation value of a Pauli tensor product observable.\n\n"
+            "Returns <ψ|P₀⊗P₁⊗…⊗Pₙ|ψ> where each Pᵢ is a Pauli operator\n"
+            "acting on the corresponding qubit. Result is in [-1.0, +1.0].\n"
+            "Does not collapse the state.\n\n"
+            "``paulis`` and ``qubits`` must have equal length.\n\n"
+            "Example::\n\n"
+            "    # Measure <ZZ> on a Bell state — should be +1\n"
+            "    sim.h(0); sim.cnot(0, 1)\n"
+            "    sim.exp_val_pauli([Pauli.PauliZ, Pauli.PauliZ], [0, 1])")
+
+        .def("variance_pauli",
+            [](QrackSim& s,
+               std::vector<Qrack::Pauli> paulis,
+               std::vector<bitLenInt>    qubits) -> real1_f
+            {
+                if (paulis.size() != qubits.size())
+                    throw std::invalid_argument(
+                        "variance_pauli: paulis and qubits must have the same length");
+                for (auto q : qubits)
+                    s.check_qubit(q, "variance_pauli");
+                return s.sim->VariancePauliAll(qubits, paulis);
+            },
+            nb::arg("paulis"), nb::arg("qubits"),
+            "Variance of a Pauli tensor product observable.\n\n"
+            "For a Pauli operator P (P² = I), Var(P) = 1 − <P>².\n"
+            "Result is in [0.0, 1.0]. Does not collapse the state.\n\n"
+            "Eigenstates have variance 0; maximally-mixed states have\n"
+            "variance 1.")
+
+        .def("exp_val_all",
+            [](QrackSim& s, Qrack::Pauli basis) -> real1_f {
+                std::vector<bitLenInt> qubits(s.numQubits);
+                std::iota(qubits.begin(), qubits.end(), bitLenInt(0));
+                std::vector<Qrack::Pauli> paulis(s.numQubits, basis);
+                return s.sim->ExpectationPauliAll(qubits, paulis);
+            },
+            nb::arg("basis"),
+            "Expectation value of the same Pauli operator applied to every\n"
+            "qubit. Equivalent to::\n\n"
+            "    sim.exp_val_pauli([basis] * sim.num_qubits,\n"
+            "                      list(range(sim.num_qubits)))")
+
+        .def("exp_val_floats",
+            [](QrackSim& s,
+               std::vector<bitLenInt> qubits,
+               std::vector<float>     weights) -> real1_f
+            {
+                // Qrack requires exactly two weights per qubit: weights
+                // [2*i] is qubit i's classical eigenvalue for |0>, and
+                // weights[2*i+1] is its eigenvalue for |1>. The header
+                // signature looks "bits + weights" but the runtime check
+                // is `weights.size() >= 2 * bits.size()`.
+                if (weights.size() != 2 * qubits.size())
+                    throw std::invalid_argument(
+                        "exp_val_floats: weights must contain exactly 2 entries "
+                        "per qubit (weights[2*i] for |0>, weights[2*i+1] for |1>)");
+                for (auto q : qubits)
+                    s.check_qubit(q, "exp_val_floats");
+                std::vector<Qrack::real1_f> w(weights.begin(), weights.end());
+                return s.sim->ExpectationFloatsFactorized(qubits, w);
+            },
+            nb::arg("qubits"), nb::arg("weights"),
+            "Expectation value of a weighted single-qubit observable.\n\n"
+            "Each qubit gets two classical eigenvalues — one for ``|0>`` and\n"
+            "one for ``|1>``. ``weights`` must have length ``2 * len(qubits)``::\n\n"
+            "    weights = [w0_for_|0>, w0_for_|1>,\n"
+            "               w1_for_|0>, w1_for_|1>,\n"
+            "               ...]\n\n"
+            "Returns ``Σᵢ (wᵢ⁰ · P(qᵢ=|0>) + wᵢ¹ · P(qᵢ=|1>))``. Used by\n"
+            "PennyLane's Hamiltonian expectation-value path.")
+
+        .def("variance_floats",
+            [](QrackSim& s,
+               std::vector<bitLenInt> qubits,
+               std::vector<float>     weights) -> real1_f
+            {
+                if (weights.size() != 2 * qubits.size())
+                    throw std::invalid_argument(
+                        "variance_floats: weights must contain exactly 2 entries "
+                        "per qubit (weights[2*i] for |0>, weights[2*i+1] for |1>)");
+                for (auto q : qubits)
+                    s.check_qubit(q, "variance_floats");
+                std::vector<Qrack::real1_f> w(weights.begin(), weights.end());
+                return s.sim->VarianceFloatsFactorized(qubits, w);
+            },
+            nb::arg("qubits"), nb::arg("weights"),
+            "Variance of a weighted single-qubit observable. Symmetric\n"
+            "counterpart to :meth:`exp_val_floats`. ``weights`` must have\n"
+            "length ``2 * len(qubits)`` (see :meth:`exp_val_floats`).")
 
 
         // ── Measurement ───────────────────────────────────────────────────

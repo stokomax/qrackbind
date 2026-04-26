@@ -11,13 +11,28 @@ from qrackbind import QrackException as QrackException
 
 
 class Pauli(enum.IntEnum):
+    """
+    Pauli operator basis for single-qubit observables.
+
+    Used by measure_pauli(), exp_val(), exp_val_pauli(), and
+    variance_pauli(). Integer codes are accepted wherever a Pauli
+    is expected (IntEnum semantics).
+
+    Qrack's underlying values are non-sequential:
+        PauliI = 0, PauliX = 1, PauliZ = 2, PauliY = 3.
+    """
+
     PauliI = 0
+    """Identity operator — no rotation applied."""
 
     PauliX = 1
+    """Pauli X basis — measures in the X (Hadamard) basis."""
 
     PauliY = 3
+    """Pauli Y basis — measures in the Y basis (S†H rotation)."""
 
     PauliZ = 2
+    """Pauli Z basis — computational basis, no rotation needed."""
 
 class QrackSimulator:
     """
@@ -155,6 +170,95 @@ class QrackSimulator:
     def multiplex1_mtrx(self, controls: Sequence[int], mtrxs: Sequence[complex], target: int) -> None:
         """
         Uniformly-controlled single-qubit gate. mtrxs is a flat list of 4 * 2**len(controls) complex values — one 2x2 unitary per control permutation, in row-major order.
+        """
+
+    def measure_pauli(self, basis: Pauli, qubit: int) -> bool:
+        """
+        Measure a qubit in the specified Pauli basis.
+
+        Rotates the qubit into the computational basis, measures, and
+        rotates back. Returns the same bit-valued bool as :meth:`measure`:
+        ``True`` if the rotated qubit collapsed to ``|1>``, ``False`` for
+        ``|0>``. For Pauli Z, this means ``True`` ↔ −1 eigenvalue and
+        ``False`` ↔ +1 eigenvalue. The state is collapsed in the chosen
+        basis.
+
+        Example::
+
+            sim.x(0)
+            sim.measure_pauli(Pauli.PauliZ, 0)  # → True (|1>)
+        """
+
+    def exp_val(self, basis: Pauli, qubit: int) -> float:
+        """
+        Single-qubit Pauli expectation value.
+
+        Equivalent to ``exp_val_pauli([basis], [qubit])``. Result is
+        in [-1.0, +1.0]. Does not collapse the state.
+
+        Example::
+
+            sim.h(0)
+            print(sim.exp_val(Pauli.PauliX, 0))  # → 1.0
+        """
+
+    def exp_val_pauli(self, paulis: Sequence[Pauli], qubits: Sequence[int]) -> float:
+        """
+        Expectation value of a Pauli tensor product observable.
+
+        Returns <ψ|P₀⊗P₁⊗…⊗Pₙ|ψ> where each Pᵢ is a Pauli operator
+        acting on the corresponding qubit. Result is in [-1.0, +1.0].
+        Does not collapse the state.
+
+        ``paulis`` and ``qubits`` must have equal length.
+
+        Example::
+
+            # Measure <ZZ> on a Bell state — should be +1
+            sim.h(0); sim.cnot(0, 1)
+            sim.exp_val_pauli([Pauli.PauliZ, Pauli.PauliZ], [0, 1])
+        """
+
+    def variance_pauli(self, paulis: Sequence[Pauli], qubits: Sequence[int]) -> float:
+        """
+        Variance of a Pauli tensor product observable.
+
+        For a Pauli operator P (P² = I), Var(P) = 1 − <P>².
+        Result is in [0.0, 1.0]. Does not collapse the state.
+
+        Eigenstates have variance 0; maximally-mixed states have
+        variance 1.
+        """
+
+    def exp_val_all(self, basis: Pauli) -> float:
+        """
+        Expectation value of the same Pauli operator applied to every
+        qubit. Equivalent to::
+
+            sim.exp_val_pauli([basis] * sim.num_qubits,
+                              list(range(sim.num_qubits)))
+        """
+
+    def exp_val_floats(self, qubits: Sequence[int], weights: Sequence[float]) -> float:
+        """
+        Expectation value of a weighted single-qubit observable.
+
+        Each qubit gets two classical eigenvalues — one for ``|0>`` and
+        one for ``|1>``. ``weights`` must have length ``2 * len(qubits)``::
+
+            weights = [w0_for_|0>, w0_for_|1>,
+                       w1_for_|0>, w1_for_|1>,
+                       ...]
+
+        Returns ``Σᵢ (wᵢ⁰ · P(qᵢ=|0>) + wᵢ¹ · P(qᵢ=|1>))``. Used by
+        PennyLane's Hamiltonian expectation-value path.
+        """
+
+    def variance_floats(self, qubits: Sequence[int], weights: Sequence[float]) -> float:
+        """
+        Variance of a weighted single-qubit observable. Symmetric
+        counterpart to :meth:`exp_val_floats`. ``weights`` must have
+        length ``2 * len(qubits)`` (see :meth:`exp_val_floats`).
         """
 
     def measure(self, qubit: int) -> bool:

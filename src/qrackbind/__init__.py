@@ -5,6 +5,23 @@ build precision (complex64 / float32 by default; complex128 / float64 with
 FPPOW=6). Note that ``prob_perm`` queries a single full-register basis
 state, while the existing ``prob_all`` (Phase 1) returns per-qubit |1>
 probabilities.
+
+Phase 4 — Pauli observables
+---------------------------
+The :class:`Pauli` enum (``PauliI``, ``PauliX``, ``PauliY``, ``PauliZ``) is
+``IntEnum``-compatible — integer codes are accepted everywhere a ``Pauli``
+is expected. Qrack's underlying values are non-sequential
+(``PauliI=0, PauliX=1, PauliZ=2, PauliY=3``).
+
+Pauli-aware methods on :class:`QrackSimulator`:
+
+* ``measure_pauli(basis, qubit)`` — measure in a Pauli basis (collapses)
+* ``exp_val(basis, qubit)`` — single-qubit Pauli expectation value
+* ``exp_val_pauli(paulis, qubits)`` — tensor-product Pauli expectation
+* ``variance_pauli(paulis, qubits)`` — Pauli observable variance
+* ``exp_val_all(basis)`` — broadcast a single basis across all qubits
+* ``exp_val_floats(qubits, weights)`` — weighted-sum expectation value
+* ``variance_floats(qubits, weights)`` — weighted-sum variance
 """
 
 # Import from _qrackbind_core — the underscore marks it as a private
