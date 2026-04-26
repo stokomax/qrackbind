@@ -1,3 +1,12 @@
+"""qrackbind — nanobind bindings for the Qrack quantum simulator.
+
+Element dtypes for ``state_vector`` / ``probabilities`` follow the Qrack
+build precision (complex64 / float32 by default; complex128 / float64 with
+FPPOW=6). Note that ``prob_perm`` queries a single full-register basis
+state, while the existing ``prob_all`` (Phase 1) returns per-qubit |1>
+probabilities.
+"""
+
 # Import from _qrackbind_core — the underscore marks it as a private
 # implementation detail; users import from qrackbind, not _qrackbind_core.
 import warnings

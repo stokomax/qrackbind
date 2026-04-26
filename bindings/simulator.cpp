@@ -71,6 +71,20 @@ QInterfacePtr make_simulator(bitLenInt n, SimConfig c) {
         c.isPaged        = false;
     }
 
+    // Qrack 10.6.2 QPager workaround: QPager in the stack — whether atop
+    // QHybrid/OpenCL on a GPU host or QEngineCPU on a CPU-only host —
+    // silently produces zero amplitudes for entangled states (Bell, GHZ,
+    // …), breaks `CPOWModNOut`, and segfaults from `SetAmplitude` when a
+    // direct amplitude write reaches QEngineCPU through the QPager
+    // dispatch. Per-permutation queries (`GetAmplitude`, `ProbAll`) and
+    // sampling (`MultiShotMeasureMask`) all read consistent values, but
+    // anything that materialises the full state vector or mutates a
+    // single amplitude collapses. Drop QPager unconditionally on this
+    // Qrack release. Users who explicitly opt-in via `isPaged=True` are
+    // accepting the risk — but for almost all qubit counts the QHybrid
+    // (or pure QEngineCPU) layer alone is faster anyway.
+    c.isPaged = false;
+
     std::vector<QInterfaceEngine> stack;
 
     if (c.isTensorNetwork)

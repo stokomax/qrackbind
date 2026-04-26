@@ -2,6 +2,10 @@
 
 from collections.abc import Sequence
 import enum
+from typing import Annotated
+
+import numpy
+from numpy.typing import NDArray
 
 from qrackbind import QrackException as QrackException
 
@@ -209,6 +213,21 @@ class QrackSimulator:
     def reset_all(self) -> None:
         """Reset all qubits to |0...0>."""
 
+    def m_reg(self, start: int, length: int) -> int:
+        """
+        Measure a contiguous register of 'length' qubits starting at 'start'. Collapses state. Returns result as a classical integer.
+        """
+
+    def set_permutation(self, value: int) -> None:
+        """
+        Reset state to the computational basis state |value>. Bit i of value sets qubit i.
+        """
+
+    def measure_shots(self, qubits: Sequence[int], shots: int) -> dict[int, int]:
+        """
+        Sample 'shots' measurements of 'qubits' without collapsing state. Returns dict[int, int]: measurement result -> count.
+        """
+
     def add(self, value: int, start: int, length: int) -> None:
         """
         Add classical integer 'value' to the quantum register [start, start+length).
@@ -228,6 +247,9 @@ class QrackSimulator:
         Modular exponentiation: out = base^in mod mod_n (out of place). Central operation of Shor's algorithm.
         """
 
+    def mcpown(self, base: int, mod_n: int, in_start: int, out_start: int, length: int, controls: Sequence[int]) -> None:
+        """Controlled modular exponentiation."""
+
     def mcmul(self, to_mul: int, mod_n: int, in_start: int, out_start: int, length: int, controls: Sequence[int]) -> None:
         """Controlled modular multiplication."""
 
@@ -245,6 +267,67 @@ class QrackSimulator:
 
     def ror(self, shift: int, start: int, length: int) -> None:
         """Circular rotate right."""
+
+    def set_state_vector(self, state: Annotated[NDArray[numpy.complex64], dict(shape=(None,), order='C', writable=False)]) -> None:
+        """
+        Set the simulator's quantum state from a 1-D complex NumPy array.
+        Array must be C-contiguous, have length 2**num_qubits, and use the
+        build's complex dtype (complex64 by default). The array is copied
+        into the simulator. SetQuantumState does NOT renormalise — call
+        update_running_norm() afterwards if the input may not be unit-norm.
+        """
+
+    def get_amplitude(self, index: int) -> complex:
+        """
+        Get the complex amplitude of a specific basis state by integer index.
+        index must be in [0, 2**num_qubits). Does not collapse the state.
+        """
+
+    def set_amplitude(self, index: int, amplitude: complex) -> None:
+        """
+        Set the complex amplitude of a specific basis state.
+        Does NOT re-normalise — call update_running_norm() if the resulting
+        state may not be unit-norm.
+        """
+
+    def get_reduced_density_matrix(self, qubits: Sequence[int]) -> Annotated[NDArray[numpy.complex64], dict(shape=(None, None))]:
+        """
+        Reduced density matrix of the specified qubits as a 2-D complex
+        NumPy array of shape (2**k, 2**k), where k = len(qubits). All other
+        qubits are traced out. The result is Hermitian, positive semi-definite,
+        and has trace 1.
+        """
+
+    def prob_perm(self, index: int) -> float:
+        """
+        Probability of a specific full-register basis state by integer index.
+        More efficient than ``probabilities[index]`` for sparse queries.
+        Does not collapse the state.
+
+        Note: distinct from the ``prob_all`` property, which returns the
+        per-qubit |1> probabilities (length num_qubits).
+        """
+
+    def prob_mask(self, mask: int, permutation: int) -> float:
+        """
+        Probability that the masked qubits match the given permutation.
+        mask selects which qubits to check; permutation gives their expected
+        values. Bits not in mask should be 0 in permutation.
+        """
+
+    def update_running_norm(self) -> None:
+        """
+        Recompute and apply the state vector normalisation factor.
+        Call after set_amplitude() or set_state_vector() if the injected
+        state may not be exactly unit-norm.
+        """
+
+    def first_nonzero_phase(self) -> float:
+        """
+        Return the phase angle of the lowest-index nonzero amplitude, in
+        radians. Useful for global phase normalisation before state
+        comparison.
+        """
 
     @property
     def num_qubits(self) -> int:
