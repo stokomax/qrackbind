@@ -93,13 +93,6 @@ def test_mcpown_with_inactive_control_is_identity(arith_sim):
     assert int(sim.m_reg(5, 4)) == 0
 
 
-@pytest.mark.xfail(
-    reason="Qrack CPOWModNOut on the QUnit→QPager→QHybrid stack collapses "
-    "the input register and produces 0. POWModNOut on the same stack works. "
-    "Tracked as a Qrack-side issue; the inactive-control case passes "
-    "(see test_mcpown_with_inactive_control_is_identity).",
-    strict=True,
-)
 def test_mcpown_with_active_control_applies(arith_sim):
     sim = arith_sim(9)
     # control=1, in=2  -> permutation bits: bit0=1, bits1..4=0010

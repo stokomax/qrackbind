@@ -1,5 +1,8 @@
 #include "qrackbind_core.h"
 #include "qalu.hpp"
+#if ENABLE_OPENCL
+#include "common/oclengine.hpp"
+#endif
 
 // ── Constants needed for multi-control gates ─────────────────────────────────
 static const Qrack::complex ONE_C  = Qrack::complex(1.0f, 0.0f);
@@ -12,6 +15,17 @@ static const Qrack::real1 SQRT1_2  = (Qrack::real1)std::sqrt(0.5f);
 static const Qrack::complex H_MTRX[4] = {
     {SQRT1_2, 0}, {SQRT1_2, 0}, {SQRT1_2, 0}, {-SQRT1_2, 0}
 };
+
+// ── Phase 3 type aliases ─────────────────────────────────────────────────────
+// The ndarray element type follows Qrack's compile-time `real1` precision.
+// On the default Qrack build (FPPOW=5) `real1 == float`, so cf_t is
+// std::complex<float> → numpy.complex64 and r_t is float → numpy.float32.
+// On a double-precision build, both widen automatically and Python sees
+// complex128 / float64. Half / float128 builds are not supported here.
+using r_t  = Qrack::real1;
+using cf_t = std::complex<r_t>;
+static_assert(sizeof(cf_t) == sizeof(Qrack::complex),
+    "cf_t and Qrack::complex must be layout-compatible for reinterpret_cast");
 
 struct SimConfig {
     bool isTensorNetwork     = true;
@@ -27,7 +41,36 @@ struct SimConfig {
     bool isNoise             = false;
 };
 
-QInterfacePtr make_simulator(bitLenInt n, const SimConfig& c) {
+// Detect whether the running process actually has at least one usable
+// OpenCL device. Qrack will happily emit an "OCL stack" config even when
+// the host has no OpenCL runtime, but the resulting simulator silently
+// returns zero amplitudes for entangled states. Any caller that asks for
+// `isOpenCL=True` on such a host is transparently downgraded to a CPU-only
+// stack.
+static bool runtime_has_opencl()
+{
+#if ENABLE_OPENCL
+    try {
+        return Qrack::OCLEngine::Instance().GetDeviceCount() > 0;
+    } catch (...) {
+        return false;
+    }
+#else
+    return false;
+#endif
+}
+
+QInterfacePtr make_simulator(bitLenInt n, SimConfig c) {
+    // Honour the user's request to enable OpenCL, but only if the host
+    // actually has a runtime device. Without this clamp, the QPager /
+    // QHybrid / QEngineOCL layers in the default stack produce silent
+    // zero-amplitude bugs on entangled states.
+    if (c.isOpenCL && !runtime_has_opencl()) {
+        c.isOpenCL       = false;
+        c.isCpuGpuHybrid = false;
+        c.isPaged        = false;
+    }
+
     std::vector<QInterfaceEngine> stack;
 
     if (c.isTensorNetwork)
@@ -41,8 +84,9 @@ QInterfacePtr make_simulator(bitLenInt n, const SimConfig& c) {
 
     if (c.isBinaryDecisionTree) {
         stack.push_back(QINTERFACE_BDT);
-    } else if (c.isPaged) {
-        stack.push_back(QINTERFACE_QPAGER);
+    } else {
+        if (c.isPaged && c.isOpenCL)
+            stack.push_back(QINTERFACE_QPAGER);
         if (c.isCpuGpuHybrid && c.isOpenCL)
             stack.push_back(QINTERFACE_HYBRID);
         else if (c.isOpenCL)
@@ -61,7 +105,15 @@ QInterfacePtr make_simulator(bitLenInt n, const SimConfig& c) {
         /*rgp=*/        nullptr,
         /*phaseFac=*/   CMPLX_DEFAULT_ARG,
         /*doNorm=*/     false,
-        /*randomGP=*/   true,
+        // randomGP=false: keep the ground-state amplitude exactly 1+0j
+        // rather than e^{iφ} for some random φ. The randomized global
+        // phase is unobservable physically but breaks naive comparisons
+        // against a reference state vector (sv[0] == 1) and complicates
+        // user code that expects |0…0⟩ to look like the textbook
+        // computational-basis state. Users who need a randomized global
+        // phase can call `update_running_norm()` after applying any
+        // initial gates, or compose with their own phase rotation.
+        /*randomGP=*/   false,
         /*useHostMem=*/ c.isHostPointer,
         /*deviceId=*/   -1,
         /*useHWRNG=*/   true,
@@ -695,6 +747,225 @@ nb::class_<QrackSim>(m, "QrackSimulator",
                 s.sim->ROR(shift, start, length); },
             nb::arg("shift"), nb::arg("start"), nb::arg("length"),
             "Circular rotate right.")
+
+        // ── State vector access (Phase 3) ────────────────────────────────
+        // These are exposed as plain methods (with a leading underscore) and
+        // wrapped as @property by the Python __init__.py. The reason: nanobind's
+        // def_prop_ro forces rv_policy::reference_internal on the getter, which
+        // is incompatible with capsule-owned ndarrays. Plain .def() lets us pass
+        // rv_policy::move so the capsule retains lifetime ownership.
+        //
+        // Snapshot semantics. Each call allocates a fresh buffer, copies the
+        // state into it, and hands ownership to a Python capsule. The
+        // returned ndarray reflects the state *at the moment of the call*;
+        // subsequent gates do not mutate it.
+        // NOTE on implementation strategy
+        // ───────────────────────────────
+        // Qrack 10.6.2's QInterface::GetQuantumState / GetProbs /
+        // GetReducedDensityMatrix paths through the default
+        // QTensorNetwork → QUnit → QPager → QHybrid stack are observed to
+        // silently leave the destination buffer untouched (all zeros) when
+        // the state has not been "realized" — even though
+        // GetAmplitude(perm) and ProbAll(perm) return correct values for
+        // any individual basis state.
+        //
+        // Workaround: build the snapshot by per-permutation queries. This
+        // is O(2^n) calls instead of one bulk copy, but it is correct on
+        // every Qrack backend and dwarfed by the Python overhead at the
+        // sizes (≤ ~20 qubits) where dense state extraction makes sense
+        // anyway. For larger circuits, users should use prob_perm /
+        // get_amplitude / measure_shots directly instead of materialising
+        // the full vector.
+        .def("_state_vector_impl",
+            [](QrackSim& s) -> nb::ndarray<nb::numpy, cf_t, nb::shape<-1>>
+            {
+                const size_t n = size_t(1) << s.numQubits;
+                cf_t* buf = new cf_t[n];
+                for (size_t i = 0; i < n; i++) {
+                    const Qrack::complex amp = s.sim->GetAmplitude(bitCapInt(i));
+                    buf[i] = cf_t(amp.real(), amp.imag());
+                }
+                nb::capsule owner(buf, [](void* p) noexcept {
+                    delete[] static_cast<cf_t*>(p);
+                });
+                return nb::ndarray<nb::numpy, cf_t, nb::shape<-1>>(
+                    buf, {n}, owner);
+            },
+            nb::rv_policy::reference,
+            "Internal: backing function for the ``state_vector`` property.")
+
+        .def("_probabilities_impl",
+            [](QrackSim& s) -> nb::ndarray<nb::numpy, r_t, nb::shape<-1>>
+            {
+                const size_t n = size_t(1) << s.numQubits;
+                r_t* buf = new r_t[n];
+                for (size_t i = 0; i < n; i++)
+                    buf[i] = static_cast<r_t>(s.sim->ProbAll(bitCapInt(i)));
+                nb::capsule owner(buf, [](void* p) noexcept {
+                    delete[] static_cast<r_t*>(p);
+                });
+                return nb::ndarray<nb::numpy, r_t, nb::shape<-1>>(
+                    buf, {n}, owner);
+            },
+            nb::rv_policy::reference,
+            "Internal: backing function for the ``probabilities`` property.")
+
+        .def("set_state_vector",
+            [](QrackSim& s,
+               nb::ndarray<nb::numpy, const cf_t, nb::ndim<1>, nb::c_contig> arr)
+            {
+                const size_t expected = size_t(1) << s.numQubits;
+                if (arr.shape(0) != expected)
+                    throw std::invalid_argument(
+                        "set_state_vector: array length " +
+                        std::to_string(arr.shape(0)) +
+                        " does not match state space size " +
+                        std::to_string(expected) +
+                        " (2^" + std::to_string(s.numQubits) + ")");
+                s.sim->SetQuantumState(
+                    reinterpret_cast<const Qrack::complex*>(arr.data()));
+            },
+            nb::arg("state"),
+            "Set the simulator's quantum state from a 1-D complex NumPy array.\n"
+            "Array must be C-contiguous, have length 2**num_qubits, and use the\n"
+            "build's complex dtype (complex64 by default). The array is copied\n"
+            "into the simulator. SetQuantumState does NOT renormalise — call\n"
+            "update_running_norm() afterwards if the input may not be unit-norm.")
+
+        .def("get_amplitude",
+            [](QrackSim& s, bitCapInt perm) -> std::complex<float>
+            {
+                const Qrack::complex amp = s.sim->GetAmplitude(perm);
+                return std::complex<float>(
+                    static_cast<float>(amp.real()),
+                    static_cast<float>(amp.imag()));
+            },
+            nb::arg("index"),
+            "Get the complex amplitude of a specific basis state by integer index.\n"
+            "index must be in [0, 2**num_qubits). Does not collapse the state.")
+
+        .def("set_amplitude",
+            [](QrackSim& s, bitCapInt perm, std::complex<float> amp)
+            {
+                s.sim->SetAmplitude(perm,
+                    Qrack::complex(static_cast<r_t>(amp.real()),
+                                   static_cast<r_t>(amp.imag())));
+            },
+            nb::arg("index"), nb::arg("amplitude"),
+            "Set the complex amplitude of a specific basis state.\n"
+            "Does NOT re-normalise — call update_running_norm() if the resulting\n"
+            "state may not be unit-norm.")
+
+        .def("get_reduced_density_matrix",
+            [](QrackSim& s, std::vector<bitLenInt> qubits)
+                -> nb::ndarray<nb::numpy, cf_t, nb::shape<-1, -1>>
+            {
+                // Compute the reduced density matrix from per-amplitude
+                // queries rather than calling Qrack's bulk
+                // GetReducedDensityMatrix, which (like GetQuantumState)
+                // is not reliable through the default simulator stack in
+                // this Qrack release. See the "implementation strategy"
+                // comment on _state_vector_impl above for context.
+                for (auto q : qubits)
+                    s.check_qubit(q, "get_reduced_density_matrix");
+
+                const size_t k       = qubits.size();
+                const size_t dim     = size_t(1) << k;
+                const size_t total   = size_t(1) << s.numQubits;
+                const size_t traceN  = size_t(1) << (s.numQubits - k);
+
+                // Build a list of qubits being traced out (complement of
+                // the selected set within [0, numQubits)).
+                std::vector<bool> selected(s.numQubits, false);
+                for (auto q : qubits) selected[q] = true;
+                std::vector<bitLenInt> traced;
+                traced.reserve(s.numQubits - k);
+                for (bitLenInt q = 0; q < s.numQubits; q++)
+                    if (!selected[q]) traced.push_back(q);
+
+                // Cache the full state vector once (O(2^n) GetAmplitude
+                // calls) so the rho_{ij} = Σ_t ψ_{i,t} · conj(ψ_{j,t})
+                // double loop is O(dim^2 · traceN) = O(2^(2k) · 2^(n-k))
+                // = O(2^(n+k)) on the cache rather than O(2^(n+k)) calls
+                // into Qrack.
+                std::vector<cf_t> psi(total);
+                for (size_t i = 0; i < total; i++) {
+                    const Qrack::complex amp = s.sim->GetAmplitude(bitCapInt(i));
+                    psi[i] = cf_t(amp.real(), amp.imag());
+                }
+
+                // For permutation index `i` over the selected qubits and
+                // `t` over the traced qubits, the corresponding full-
+                // register basis index is composed bit-wise: bit `qubits[b]`
+                // takes (i >> b) & 1; bit `traced[b]` takes (t >> b) & 1.
+                auto compose = [&](size_t i, size_t t) -> size_t {
+                    size_t idx = 0;
+                    for (size_t b = 0; b < k; b++)
+                        if ((i >> b) & 1u) idx |= (size_t(1) << qubits[b]);
+                    for (size_t b = 0; b < traced.size(); b++)
+                        if ((t >> b) & 1u) idx |= (size_t(1) << traced[b]);
+                    return idx;
+                };
+
+                cf_t* buf = new cf_t[dim * dim];
+                for (size_t i = 0; i < dim; i++) {
+                    for (size_t j = 0; j < dim; j++) {
+                        cf_t sum(0.0f, 0.0f);
+                        for (size_t t = 0; t < traceN; t++) {
+                            const cf_t a = psi[compose(i, t)];
+                            const cf_t b = psi[compose(j, t)];
+                            sum += a * std::conj(b);
+                        }
+                        buf[i * dim + j] = sum;
+                    }
+                }
+
+                nb::capsule owner(buf, [](void* p) noexcept {
+                    delete[] static_cast<cf_t*>(p);
+                });
+                return nb::ndarray<nb::numpy, cf_t, nb::shape<-1, -1>>(
+                    buf, {dim, dim}, owner);
+            },
+            nb::arg("qubits"),
+            nb::rv_policy::reference,
+            "Reduced density matrix of the specified qubits as a 2-D complex\n"
+            "NumPy array of shape (2**k, 2**k), where k = len(qubits). All other\n"
+            "qubits are traced out. The result is Hermitian, positive semi-definite,\n"
+            "and has trace 1.")
+
+        .def("prob_perm",
+            [](QrackSim& s, bitCapInt perm) -> real1_f {
+                return s.sim->ProbAll(perm);
+            },
+            nb::arg("index"),
+            "Probability of a specific full-register basis state by integer index.\n"
+            "More efficient than ``probabilities[index]`` for sparse queries.\n"
+            "Does not collapse the state.\n\n"
+            "Note: distinct from the ``prob_all`` property, which returns the\n"
+            "per-qubit |1> probabilities (length num_qubits).")
+
+        .def("prob_mask",
+            [](QrackSim& s, bitCapInt mask, bitCapInt permutation) -> real1_f {
+                return s.sim->ProbMask(mask, permutation);
+            },
+            nb::arg("mask"), nb::arg("permutation"),
+            "Probability that the masked qubits match the given permutation.\n"
+            "mask selects which qubits to check; permutation gives their expected\n"
+            "values. Bits not in mask should be 0 in permutation.")
+
+        .def("update_running_norm",
+            [](QrackSim& s) { s.sim->UpdateRunningNorm(); },
+            "Recompute and apply the state vector normalisation factor.\n"
+            "Call after set_amplitude() or set_state_vector() if the injected\n"
+            "state may not be exactly unit-norm.")
+
+        .def("first_nonzero_phase",
+            [](QrackSim& s) -> real1_f {
+                return static_cast<real1_f>(s.sim->FirstNonzeroPhase());
+            },
+            "Return the phase angle of the lowest-index nonzero amplitude, in\n"
+            "radians. Useful for global phase normalisation before state\n"
+            "comparison.")
 
         // ── Properties ────────────────────────────────────────────────────
         .def_prop_ro("num_qubits",

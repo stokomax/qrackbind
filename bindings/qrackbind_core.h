@@ -8,9 +8,9 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/complex.h>   // required for std::complex<float> casters used by mtrx/mcmtrx/multiplex1_mtrx
 #include <nanobind/stl/map.h>       // required for std::map return from measure_shots
+#include <nanobind/ndarray.h>       // state_vector, probabilities, RDM (Phase 3)
 // Add as needed:
 // #include <nanobind/stl/optional.h>
-// #include <nanobind/ndarray.h>    // for state_vector / probabilities (Phase 1)
 
 // Qrack types used across all binding files
 #include "qfactory.hpp"

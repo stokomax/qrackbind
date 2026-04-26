@@ -2,6 +2,8 @@
 # implementation detail; users import from qrackbind, not _qrackbind_core.
 import warnings
 
+import numpy as np
+
 from ._core import QrackSimulator as _QrackSimulator, Pauli, QrackException
 
 
@@ -15,6 +17,25 @@ class QrackSimulator(_QrackSimulator):
     """
 
     __slots__ = ()
+
+    @property
+    def state_vector(self) -> "np.ndarray":
+        """Full state vector snapshot as a 1-D complex NumPy array of length 2**num_qubits.
+
+        Element dtype follows the Qrack build (complex64 by default). Returns a
+        copy — modifying the array does not affect the simulator. To inject a
+        state, use :meth:`set_state_vector`.
+        """
+        return self._state_vector_impl()
+
+    @property
+    def probabilities(self) -> "np.ndarray":
+        """Probability of each basis state as a 1-D float NumPy array of length 2**num_qubits.
+
+        Equivalent to ``abs(state_vector)**2``. Does not collapse the state.
+        Element dtype follows the Qrack build (float32 by default).
+        """
+        return self._probabilities_impl()
 
     def m(self, qubit: int) -> int:
         """Deprecated: use measure(qubit)."""
