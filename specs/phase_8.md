@@ -23,7 +23,7 @@ Phase 8 has no new nanobind binding work. The learning goals are framework-archi
 
 | Topic | Where it appears |
 |---|---|
-| PennyLane `Device` API (v0.36+) — `execute()` and `preprocess_transforms()` | §2 — device class |
+| PennyLane `Device` API (v0.43+) — `execute()` and `preprocess_transforms()` | §2 — device class |
 | TOML capabilities file format | §3 — gate declaration |
 | Gate name mapping between PennyLane, Qiskit, and qrackbind | §4 — dispatch table |
 | PennyLane `QuantumScript` IR — iterating operations | §5 — `execute()` implementation |
@@ -316,7 +316,7 @@ class QrackDevice(Device):
     """
 
     config_filepath = _TOML_PATH
-    pennylane_requires = ">=0.36"
+    pennylane_requires = ">=0.43"
 
     def __init__(self, wires=None, shots=None, **simulator_kwargs):
         super().__init__(wires=wires, shots=shots)
