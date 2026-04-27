@@ -17,6 +17,51 @@ sync: setup
 dev:
     uv pip install -e . --no-build-isolation
 
+# Display Qrack library features.
+info:
+    #!/usr/bin/env bash
+    echo "=== Qrack library ==="
+    LIB=$(find /usr/lib/qrack /usr/local/lib /usr/lib -name "libqrack.*" 2>/dev/null | head -1)
+    [ -n "${LIB}" ] && echo "Location: ${LIB}" || echo "libqrack: not found"
+    if [ -n "${LIB}" ]; then
+        nm "${LIB}" 2>/dev/null | grep -q "clBuildProgram"  \
+            && echo "OpenCL:   compiled in" || echo "OpenCL:   not compiled in"
+        nm "${LIB}" 2>/dev/null | grep -q "cudaLaunchKernel" \
+            && echo "CUDA:     compiled in" || echo "CUDA:     not compiled in"
+        nm "${LIB}" 2>/dev/null | grep -q "__int128" \
+            && echo "uint128:  YES — nb::sig() overrides required in qrackbind" \
+            || echo "uint128:  NO — standard uint64_t bitCapInt"
+    fi
+    echo ""
+    echo "=== Qrack headers ==="
+    HFILE="/usr/include/qrack/qrack_types.hpp"
+    [ -f "${HFILE}" ] \
+        && grep -E "FPPOW|UINTPOW|bitCapInt|real1\b" "${HFILE}" | head -6 \
+        || echo "qrack_types.hpp not found"
+    echo ""
+    echo "=== qrack_cl_precompile ==="
+    command -v qrack_cl_precompile &>/dev/null \
+        && echo "Found: $(which qrack_cl_precompile)" \
+        || echo "Not found (normal for static-library installs)"
+    echo ""
+    echo "=== OpenCL runtime ==="
+    command -v clinfo &>/dev/null \
+        && clinfo 2>/dev/null | grep "Number of platforms" \
+        || echo "clinfo not installed"
+    echo ""
+    echo "=== CUDA ==="
+    command -v nvcc &>/dev/null \
+        && nvcc --version | head -1 \
+        || echo "nvcc not found"
+    echo ""
+    echo "=== WSL2 ==="
+    ls /usr/lib/wsl/lib/libOpenCL.so.1 2>/dev/null \
+        && echo "WSL2 stub: present" \
+        || echo "WSL2 stub: not found"
+    echo ""
+    echo "=== ldconfig path ==="
+    ldconfig -p 2>/dev/null | grep qrack || echo "libqrack: not on ldconfig path"
+
 install:
     rm -rf build/
     uv pip install . --no-build-isolation
@@ -88,7 +133,7 @@ stubs *args="": install
 
 # Verify stubs match the installed extension (type-check against them)
 check-stubs: stubs
-    uv run mypy src/{{package}} --ignore-missing-imports
+    uv run pyright src/{{package}}
 
 clean:
     rm -rf dist/ build/ _skbuild/ *.egg-info
@@ -105,7 +150,7 @@ lint:
     uv run ruff check .
 
 typecheck:
-    uv run mypy .
+    uv run pyright .
 
 publish: wheel
     uv publish

@@ -2,6 +2,7 @@
 
 // Forward declarations — one per binding .cpp file
 void bind_simulator(nb::module_& m);
+void bind_circuit (nb::module_& m);
 
 // Module name must exactly match the CMakeLists.txt target name: _core
 NB_MODULE(_core, m) {
@@ -46,6 +47,5 @@ NB_MODULE(_core, m) {
                "Pauli Z basis — computational basis, no rotation needed.");
 
     bind_simulator(m);
-
-    // Future bind_circuit(m);
+    bind_circuit(m);
 }

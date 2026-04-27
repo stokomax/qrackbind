@@ -44,6 +44,8 @@ import warnings
 import numpy as np
 
 from ._core import (
+    GateType,
+    QrackCircuit,
     QrackSimulator as _QrackSimulator,
     Pauli,
     QrackException,
@@ -104,8 +106,10 @@ class QrackSimulator(_QrackSimulator):
 
 
 __all__ = [
+    "GateType",
     "Pauli",
     "QrackArgumentError",
+    "QrackCircuit",
     "QrackException",
     "QrackQubitError",
     "QrackSimulator",

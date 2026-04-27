@@ -4,7 +4,7 @@ exp_val_all, exp_val_floats, variance_floats."""
 import numpy as np
 import pytest
 
-from qrackbind import Pauli, QrackSimulator
+from qrackbind import Pauli, QrackArgumentError, QrackSimulator
 
 
 # ── Enum properties ──────────────────────────────────────────────────────────
@@ -326,3 +326,84 @@ class TestPhase4Integration:
         sim.exp_val_pauli([Pauli.PauliZ, Pauli.PauliX], [0, 1])
         sv_after = sim.state_vector
         assert np.allclose(np.abs(sv_before), np.abs(sv_after), atol=1e-5)
+
+
+# ── Deferred Phase 4: exp_val_unitary, variance_unitary, exp_val_bits_factorized ──
+
+
+class TestExpValUnitary:
+    def test_z_matrix_matches_pauli_z(self):
+        # Z matrix: [[1,0],[0,-1]] — row-major flat list
+        z_matrix = [1 + 0j, 0 + 0j, 0 + 0j, -1 + 0j]
+        sim = QrackSimulator(qubitCount=1)
+        ev_unitary = sim.exp_val_unitary([0], z_matrix)
+        ev_pauli = sim.exp_val(Pauli.PauliZ, 0)
+        assert ev_unitary == pytest.approx(ev_pauli, abs=1e-4)
+
+    def test_z_matrix_on_one_state(self):
+        # Z matrix: [[1,0],[0,-1]] — diagonal elements are used as eigenvalues
+        # Z on |1⟩: diag[0]*P(|0⟩) + diag[1]*P(|1⟩) = 1*0 + (-1)*1 = -1.0
+        z_matrix = [1 + 0j, 0 + 0j, 0 + 0j, -1 + 0j]
+        sim = QrackSimulator(qubitCount=1)
+        sim.x(0)  # |1⟩ state
+        ev = sim.exp_val_unitary([0], z_matrix)
+        assert ev == pytest.approx(-1.0, abs=1e-4)
+
+    def test_mismatched_ops_raises(self):
+        sim = QrackSimulator(qubitCount=2)
+        with pytest.raises(QrackArgumentError):
+            # 2 qubits need 8 elements, only 4 given
+            sim.exp_val_unitary([0, 1], [1 + 0j] * 4)
+
+    def test_two_qubit_tensor_product(self):
+        # Z⊗Z on |00> should give +1
+        z_matrix = [1 + 0j, 0 + 0j, 0 + 0j, -1 + 0j]
+        sim = QrackSimulator(qubitCount=2)
+        # 2 qubits, each with 4 complex values = 8 total
+        ev = sim.exp_val_unitary([0, 1], z_matrix * 2)
+        assert ev == pytest.approx(1.0, abs=1e-4)
+
+
+class TestVarianceUnitary:
+    def test_z_variance_on_zero_is_zero(self):
+        z_matrix = [1 + 0j, 0 + 0j, 0 + 0j, -1 + 0j]
+        sim = QrackSimulator(qubitCount=1)
+        var = sim.variance_unitary([0], z_matrix)
+        # |0⟩ is an eigenstate of Z — variance should be 0
+        assert var == pytest.approx(0.0, abs=1e-4)
+
+    def test_z_variance_on_plus(self):
+        # Z matrix: [[1,0],[0,-1]] — diagonal elements are used as eigenvalues
+        # |+⟩ = equal superposition: <Z>=0, <Z²>=1 → Var(Z)=1
+        z_matrix = [1 + 0j, 0 + 0j, 0 + 0j, -1 + 0j]
+        sim = QrackSimulator(qubitCount=1)
+        sim.h(0)  # |+⟩ state
+        var = sim.variance_unitary([0], z_matrix)
+        assert var == pytest.approx(1.0, abs=1e-4)
+
+    def test_mismatched_ops_raises(self):
+        sim = QrackSimulator(qubitCount=2)
+        with pytest.raises(QrackArgumentError):
+            sim.variance_unitary([0, 1], [1 + 0j] * 4)
+
+
+class TestExpValBitsFactorized:
+    def test_identity_permutation_on_zero(self):
+        sim = QrackSimulator(qubitCount=1)
+        # Identity permutation (0b0) means weight 0 for |0>, weight 0 for any
+        # other basis. On |0⟩, the value should be 0.
+        # Qrack requires 2 perms per qubit: [weight_for_|0⟩, weight_for_|1⟩]
+        ev = sim.exp_val_bits_factorized([0], [0, 0])
+        assert ev == pytest.approx(0.0, abs=1e-4)
+
+    def test_weighted_permutation(self):
+        sim = QrackSimulator(qubitCount=1)
+        sim.h(0)  # equal superposition
+        # perm weight 0 → contribution from |0⟩ is zero
+        # perm weight 1 → contribution from |1⟩ is 1.0
+        # On a uniform superposition, <P(qubit=1)> = 0.5
+        # So exp_val ≈ 0.5 * 1.0 = 0.5
+        # Qrack requires 2 perms per qubit: [weight_for_|0⟩, weight_for_|1⟩]
+        # weight=0 for |0⟩, weight=1 for |1⟩ → <P(qubit=1)> = 0.5 * 1.0 = 0.5
+        ev = sim.exp_val_bits_factorized([0], [0, 1])
+        assert ev == pytest.approx(0.5, abs=1e-4)

@@ -7,7 +7,11 @@ from typing import Annotated
 import numpy
 from numpy.typing import NDArray
 
-from qrackbind import QrackException as QrackException
+from qrackbind import (
+    QrackArgumentError as QrackArgumentError,
+    QrackException as QrackException,
+    QrackQubitError as QrackQubitError
+)
 
 
 class Pauli(enum.IntEnum):
@@ -261,6 +265,26 @@ class QrackSimulator:
         length ``2 * len(qubits)`` (see :meth:`exp_val_floats`).
         """
 
+    def exp_val_unitary(self, qubits: Sequence[int], basis_ops: Sequence[complex], eigen_vals: Sequence[float] = []) -> float:
+        """
+        Expectation value of a tensor product of arbitrary 2x2 unitary
+        observables. ``basis_ops`` is a flat list of ``4 * len(qubits)``
+        complex values — one 2x2 matrix per qubit, in row-major order.
+        """
+
+    def variance_unitary(self, qubits: Sequence[int], basis_ops: Sequence[complex], eigen_vals: Sequence[float] = []) -> float:
+        """
+        Variance of a tensor product of arbitrary 2x2 unitary observables.
+        See :meth:`exp_val_unitary` for parameter conventions.
+        """
+
+    def exp_val_bits_factorized(self, qubits: Sequence[int], perms: Sequence[int]) -> float:
+        """
+        Per-qubit weighted expectation value using bitCapInt permutation
+        weights. Low-level API used by Shor's and arithmetic expectation
+        paths.
+        """
+
     def measure(self, qubit: int) -> bool:
         """Measure qubit. Returns True=|1>, False=|0>. Collapses state."""
 
@@ -454,3 +478,162 @@ class QrackSimulator:
     def __enter__(self) -> QrackSimulator: ...
 
     def __exit__(self, exc_type: object | None, exc_val: object | None, exc_tb: object | None) -> bool: ...
+
+class GateType(enum.Enum):
+    """
+    Gate type identifier for ``QrackCircuit.append_gate()``.
+
+    Used to specify which gate to add to the circuit without
+    immediately applying it to a simulator.
+    """
+
+    H = 0
+    """Hadamard gate"""
+
+    X = 1
+    """Pauli X (bit flip)"""
+
+    Y = 2
+    """Pauli Y"""
+
+    Z = 3
+    """Pauli Z (phase flip)"""
+
+    S = 4
+    """S gate (phase π/2)"""
+
+    T = 5
+    """T gate (phase π/4)"""
+
+    IS = 6
+    """S† (inverse S)"""
+
+    IT = 7
+    """T† (inverse T)"""
+
+    SqrtX = 8
+    """√X gate"""
+
+    ISqrtX = 9
+    """√X† gate"""
+
+    RX = 10
+    """X rotation — 1 angle param"""
+
+    RY = 11
+    """Y rotation — 1 angle param"""
+
+    RZ = 12
+    """Z rotation — 1 angle param"""
+
+    R1 = 13
+    """Phase rotation — 1 angle param"""
+
+    CNOT = 14
+    """Controlled NOT — 2 qubits"""
+
+    CY = 15
+    """Controlled Y — 2 qubits"""
+
+    CZ = 16
+    """Controlled Z — 2 qubits"""
+
+    CH = 17
+    """Controlled H — 2 qubits"""
+
+    MCX = 18
+    """Multi-controlled X — last qubit is target"""
+
+    MCY = 19
+    """Multi-controlled Y — last qubit is target"""
+
+    MCZ = 20
+    """Multi-controlled Z — last qubit is target"""
+
+    SWAP = 21
+    """SWAP gate — 2 qubits"""
+
+    ISWAP = 22
+    """iSWAP gate — not yet implemented"""
+
+    U = 23
+    """Arbitrary unitary U(θ, φ, λ) — 3 angle params"""
+
+    Mtrx = 24
+    """Arbitrary 2x2 unitary — 8 float params (4 complex)"""
+
+    MCMtrx = 25
+    """Multi-controlled arbitrary 2x2 — 8 float params"""
+
+class QrackCircuit:
+    """
+    A replayable, optimisable quantum circuit.
+
+    Records gate operations that can be executed on any
+    :class:`QrackSimulator` via :meth:`run`. Circuits can be
+    inverted, combined, and (in future) serialised to QASM.
+
+    Example::
+
+        circ = QrackCircuit(2)
+        circ.append_gate(GateType.H, [0])
+        circ.append_gate(GateType.CNOT, [0, 1])
+        sim = QrackSimulator(qubitCount=2)
+        circ.run(sim)  # Bell state prepared
+    """
+
+    def __init__(self, qubitCount: int) -> None:
+        """Construct a circuit with the given number of qubits."""
+
+    def __repr__(self) -> str: ...
+
+    def append_gate(self, gate: GateType, qubits: Sequence[int], params: Sequence[float] = []) -> None:
+        """
+        Append a gate to the circuit without executing it.
+
+        Gates are accumulated and can be optimised before running.
+        ``params`` carries angle values for rotation gates, or complex
+        components (real, imag pairs in row-major order) for matrix gates.
+
+        Multi-controlled gates (MCX, MCY, MCZ, MCMtrx) treat the *last*
+        qubit as the target and all others as controls.
+        """
+
+    def run(self, simulator: QrackSimulator) -> None:
+        """
+        Apply the circuit to the given simulator.
+
+        The simulator's state is updated in place. The circuit itself
+        is not consumed — it can be run on multiple simulators.
+        The simulator must have at least as many qubits as the circuit.
+        """
+
+    def inverse(self) -> QrackCircuit:
+        """
+        Return a new circuit that is the adjoint (inverse) of this circuit.
+
+        Applies all gates in reverse order with conjugate-transposed matrices.
+        Useful for uncomputation and ansatz construction.
+
+        Example::
+
+            circ = QrackCircuit(2)
+            circ.append_gate(GateType.H, [0])
+            circ_inv = circ.inverse()   # applies H† = H
+            circ.run(sim)
+            circ_inv.run(sim)            # net effect: identity
+        """
+
+    def append(self, other: QrackCircuit) -> None:
+        """
+        Append all gates from another circuit to the end of this circuit.
+        The other circuit's qubit count must be <= this circuit's qubit count.
+        """
+
+    @property
+    def gate_count(self) -> int:
+        """Number of gates currently recorded in the circuit."""
+
+    @property
+    def num_qubits(self) -> int:
+        """Number of qubits this circuit operates on."""

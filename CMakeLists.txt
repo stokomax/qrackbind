@@ -107,6 +107,7 @@ nanobind_add_module(
   bindings/qrackbind_ext.cpp
   bindings/exceptions.cpp
   bindings/simulator.cpp
+  bindings/circuit.cpp
 )
 
 target_include_directories(_core PRIVATE ${QRACK_INCLUDE})
@@ -118,20 +119,14 @@ endif()
 # Qrack configuration defines are already baked into the installed library
 # We cannot override them - Qrack will use whatever it was built with
 
-# py.typed stub marker target
-nanobind_add_stub(
-    ${SKBUILD_PROJECT_NAME}_core_stub
-    MODULE      _core
-    OUTPUT      _core.pyi
-    MARKER_FILE py.typed
-    PYTHON_PATH $<TARGET_FILE_DIR:_core>
-    DEPENDS     _core
-)
-
 # Install directive for scikit-build-core
 install(TARGETS _core LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME})
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/_core.pyi DESTINATION ${SKBUILD_PROJECT_NAME})
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/py.typed DESTINATION ${SKBUILD_PROJECT_NAME})
+# NOTE: nanobind stubgen currently aborts while introspecting this module
+# after adding cross-referenced QrackCircuit/QrackSimulator bindings. Until
+# that is isolated, install the maintained source-tree stubs so wheel builds
+# are not blocked by stub generation.
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/qrackbind/_core.pyi DESTINATION ${SKBUILD_PROJECT_NAME})
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/qrackbind/py.typed DESTINATION ${SKBUILD_PROJECT_NAME})
 
 # C++ Tests configuration
 if(BUILD_CPP_TESTS)

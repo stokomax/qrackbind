@@ -28,20 +28,6 @@ using cf_t = std::complex<r_t>;
 static_assert(sizeof(cf_t) == sizeof(Qrack::complex),
     "cf_t and Qrack::complex must be layout-compatible for reinterpret_cast");
 
-struct SimConfig {
-    bool isTensorNetwork     = true;
-    bool isSchmidtDecompose  = true;
-    bool isSchmidtDecomposeMulti = false;
-    bool isStabilizerHybrid  = false;
-    bool isBinaryDecisionTree = false;
-    bool isPaged             = true;
-    bool isCpuGpuHybrid      = true;
-    bool isOpenCL            = true;
-    bool isHostPointer       = false;
-    bool isSparse            = false;
-    bool isNoise             = false;
-};
-
 // Detect whether the running process actually has at least one usable
 // OpenCL device. Qrack will happily emit an "OCL stack" config even when
 // the host has no OpenCL runtime, but the resulting simulator silently
@@ -136,39 +122,34 @@ QInterfacePtr make_simulator(bitLenInt n, SimConfig c) {
     );
 }
 
-struct QrackSim {
-    QInterfacePtr sim;
-    bitLenInt     numQubits;
-    SimConfig     config;
+QrackSim::QrackSim(bitLenInt n, const SimConfig& cfg)
+    : numQubits(n), config(cfg), sim(make_simulator(n, cfg))
+{
+    if (!sim) throw QrackError("QrackSimulator: factory returned null");
+}
 
-    QrackSim(bitLenInt n, const SimConfig& cfg)
-        : numQubits(n), config(cfg), sim(make_simulator(n, cfg))
-    {
-        if (!sim) throw QrackError("QrackSimulator: factory returned null");
-    }
+// Clone constructor — used by .clone() / __copy__ / __deepcopy__
+QrackSim::QrackSim(const QrackSim& src)
+    : numQubits(src.numQubits)
+    , config(src.config)
+    , sim(src.sim->Clone())
+{
+    if (!sim) throw QrackError("QrackSimulator: Clone() returned null");
+}
 
-    // Clone constructor — used by .clone() / __copy__ / __deepcopy__
-    explicit QrackSim(const QrackSim& src)
-        : numQubits(src.numQubits)
-        , config(src.config)
-        , sim(src.sim->Clone())
-    {
-        if (!sim) throw QrackError("QrackSimulator: Clone() returned null");
+void QrackSim::check_qubit(bitLenInt q, const char* method) const {
+    if (q >= numQubits) {
+        throw QrackError(
+            std::string(method) + ": qubit index " + std::to_string(q) +
+            " is out of range [0, " + std::to_string(numQubits) + ")"
+            " (simulator has " + std::to_string(numQubits) + " qubits)",
+            QrackErrorKind::QubitOutOfRange);
     }
+}
 
-    void check_qubit(bitLenInt q, const char* method) const {
-        if (q >= numQubits) {
-            throw QrackError(
-                std::string(method) + ": qubit index " + std::to_string(q) +
-                " is out of range [0, " + std::to_string(numQubits) + ")"
-                " (simulator has " + std::to_string(numQubits) + " qubits)",
-                QrackErrorKind::QubitOutOfRange);
-        }
-    }
-    std::string repr() const {
-        return "QrackSimulator(qubits=" + std::to_string(numQubits) + ")";
-    }
-};
+std::string QrackSim::repr() const {
+    return "QrackSimulator(qubits=" + std::to_string(numQubits) + ")";
+}
 
 static void check_arithmetic(const QrackSim& s, const char* method)
 {
@@ -668,6 +649,98 @@ nb::class_<QrackSim>(m, "QrackSimulator",
             "Variance of a weighted single-qubit observable. Symmetric\n"
             "counterpart to :meth:`exp_val_floats`. ``weights`` must have\n"
             "length ``2 * len(qubits)`` (see :meth:`exp_val_floats`).")
+
+        // ── Deferred Phase 4: arbitrary unitary observables ─────────────
+        .def("exp_val_unitary",
+            [](QrackSim& s,
+               std::vector<bitLenInt> qubits,
+               std::vector<std::complex<float>> basisOps,
+               std::vector<float> eigenVals) -> float
+            {
+                if (basisOps.size() != qubits.size() * 4)
+                    throw QrackError(
+                        "exp_val_unitary: basisOps must have 4 * len(qubits) elements",
+                        QrackErrorKind::InvalidArgument);
+                for (auto q : qubits)
+                    s.check_qubit(q, "exp_val_unitary");
+
+                std::vector<std::shared_ptr<Qrack::complex>> ops;
+                ops.reserve(qubits.size());
+                for (size_t i = 0; i < qubits.size(); ++i) {
+                    std::shared_ptr<Qrack::complex> m(
+                        new Qrack::complex[4], std::default_delete<Qrack::complex[]>());
+                    const auto* src = reinterpret_cast<const Qrack::complex*>(&basisOps[i * 4]);
+                    std::copy(src, src + 4, m.get());
+                    ops.push_back(m);
+                }
+
+                std::vector<Qrack::real1_f> ev(eigenVals.begin(), eigenVals.end());
+                return static_cast<float>(
+                    s.sim->ExpectationUnitaryAll(qubits, ops, ev));
+            },
+            nb::arg("qubits"), nb::arg("basis_ops"),
+            nb::arg("eigen_vals") = std::vector<float>{},
+            "Expectation value of a tensor product of arbitrary 2x2 unitary\n"
+            "observables. ``basis_ops`` is a flat list of ``4 * len(qubits)``\n"
+            "complex values — one 2x2 matrix per qubit, in row-major order.")
+
+        .def("variance_unitary",
+            [](QrackSim& s,
+               std::vector<bitLenInt> qubits,
+               std::vector<std::complex<float>> basisOps,
+               std::vector<float> eigenVals) -> float
+            {
+                if (basisOps.size() != qubits.size() * 4)
+                    throw QrackError(
+                        "variance_unitary: basisOps must have 4 * len(qubits) elements",
+                        QrackErrorKind::InvalidArgument);
+                for (auto q : qubits)
+                    s.check_qubit(q, "variance_unitary");
+
+                std::vector<std::shared_ptr<Qrack::complex>> ops;
+                ops.reserve(qubits.size());
+                for (size_t i = 0; i < qubits.size(); ++i) {
+                    std::shared_ptr<Qrack::complex> m(
+                        new Qrack::complex[4], std::default_delete<Qrack::complex[]>());
+                    const auto* src = reinterpret_cast<const Qrack::complex*>(&basisOps[i * 4]);
+                    std::copy(src, src + 4, m.get());
+                    ops.push_back(m);
+                }
+
+                std::vector<Qrack::real1_f> ev(eigenVals.begin(), eigenVals.end());
+                return static_cast<float>(
+                    s.sim->VarianceUnitaryAll(qubits, ops, ev));
+            },
+            nb::arg("qubits"), nb::arg("basis_ops"),
+            nb::arg("eigen_vals") = std::vector<float>{},
+            "Variance of a tensor product of arbitrary 2x2 unitary observables.\n"
+            "See :meth:`exp_val_unitary` for parameter conventions.")
+
+        .def("exp_val_bits_factorized",
+            [](QrackSim& s,
+               std::vector<bitLenInt> qubits,
+               std::vector<bitCapInt> perms) -> float
+            {
+                if (perms.size() < 2 * qubits.size())
+                    throw QrackError(
+                        "exp_val_bits_factorized: perms must contain at least 2 entries per qubit",
+                        QrackErrorKind::InvalidArgument);
+                for (auto q : qubits)
+                    s.check_qubit(q, "exp_val_bits_factorized");
+                // Qrack's ExpectationBitsFactorized takes
+                // std::vector<BigInteger> (the compiled bitCapInt),
+                // not our uint64_t typedef. Convert explicitly.
+                std::vector<BigInteger> bPerms;
+                bPerms.reserve(perms.size());
+                for (auto p : perms)
+                    bPerms.push_back(BigInteger(p));
+                return static_cast<float>(
+                    s.sim->ExpectationBitsFactorized(qubits, bPerms));
+            },
+            nb::arg("qubits"), nb::arg("perms"),
+            "Per-qubit weighted expectation value using bitCapInt permutation\n"
+            "weights. Low-level API used by Shor's and arithmetic expectation\n"
+            "paths.")
 
 
         // ── Measurement ───────────────────────────────────────────────────

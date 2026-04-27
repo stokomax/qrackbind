@@ -139,7 +139,7 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 | 3 | State Vector and NumPy | `state_vector`, `probabilities`, `set_state_vector`, `get_amplitude`, reduced density matrix, `prob_all` | :white_check_mark: |
 | 4 | Enums and Pauli Operators | `Pauli` enum, `measure_pauli`, `exp_val`, `exp_val_pauli`, `variance_pauli`, `exp_val_floats` | :white_check_mark: |
 | 5 | Exception Handling | `QrackException`, `QrackQubitError`, `QrackArgumentError`, C++ exception translator | :white_check_mark: |
-| 6 | QrackCircuit | `QrackCircuit`, `GateType`, `append_gate`, `run`, `inverse`, `optimize`, `to_qasm`, `exp_val_unitary` | :construction: |
+| 6 | QrackCircuit | `QrackCircuit`, `GateType`, `append_gate`, `run`, `inverse`, `append`, `gate_count`, `exp_val_unitary` | :white_check_mark: |
 | 7 | Stub Generation and Type Annotations | `.pyi` stubs, docstrings on all bindings, `pyright` passing | :construction: |
 | 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :construction: |
 | 9 | Packaging and Distribution | PyPI wheel via cibuildwheel, CMake `FetchContent` auto-download, `scripts/install_qrack.sh`, `uv run` scripts | :construction: |
@@ -317,6 +317,170 @@ print(sim.exp_val_pauli([Pauli.PauliZ, Pauli.PauliZ], [0, 1]))  # → 1.0
 
 > Note: dynamic allocation requires `isTensorNetwork=False`.
 
+### QrackCircuit
+
+`QrackCircuit` is a replayable, optimisable quantum circuit that records gates independently of any simulator instance. A circuit can be built once and executed on many simulators; it can also be inverted for adjoint / uncomputation passes and combined with other circuits.
+
+```python
+from qrackbind import GateType, QrackCircuit, QrackSimulator
+import math
+
+# ── Build a Bell-state circuit ────────────────────────────────────────────────
+circ = QrackCircuit(2)                        # circuit for 2 qubits
+circ.append_gate(GateType.H,    [0])          # Hadamard on qubit 0
+circ.append_gate(GateType.CNOT, [0, 1])       # CNOT: control=0, target=1
+
+print(circ)         # QrackCircuit(qubits=2, gates=2)
+print(circ.gate_count)   # 2
+print(circ.num_qubits)   # 2
+
+# ── Execute on a fresh simulator ──────────────────────────────────────────────
+sim = QrackSimulator(qubitCount=2)
+circ.run(sim)             # Bell state: |00⟩ + |11⟩ (unnormalised)
+
+results = sim.measure_all()
+print(results)            # [True, True] or [False, False]
+
+# ── The same circuit can be run on multiple simulators ────────────────────────
+for _ in range(5):
+    s = QrackSimulator(qubitCount=2)
+    circ.run(s)
+```
+
+#### Rotation and parameterised gates
+
+Rotation gates accept an `angle` (radians) via the `params` argument:
+
+```python
+circ = QrackCircuit(1)
+circ.append_gate(GateType.RZ, [0], [math.pi / 2])   # RZ(π/2)
+circ.append_gate(GateType.RY, [0], [math.pi / 4])   # RY(π/4)
+circ.append_gate(GateType.RX, [0], [math.pi])        # RX(π)
+circ.append_gate(GateType.R1, [0], [math.pi / 4])   # phase rotation
+```
+
+The general unitary `U(θ, φ, λ)` takes three angle params:
+
+```python
+circ.append_gate(GateType.U, [0], [math.pi / 2, 0.0, math.pi])
+```
+
+#### Arbitrary matrix gates
+
+`Mtrx` takes 8 float params representing the 2×2 unitary in row-major order as `[re₀₀, im₀₀, re₀₁, im₀₁, re₁₀, im₁₀, re₁₁, im₁₁]`:
+
+```python
+import math
+# Hadamard matrix as explicit floats
+s = math.sqrt(0.5)
+circ.append_gate(GateType.Mtrx, [0], [s, 0, s, 0, s, 0, -s, 0])
+```
+
+`MCMtrx` uses the same 8-float convention with all-but-last qubits as controls:
+
+```python
+# Controlled-H: control=0, target=1
+circ.append_gate(GateType.MCMtrx, [0, 1], [s, 0, s, 0, s, 0, -s, 0])
+```
+
+#### Multi-controlled gates
+
+For `MCX`, `MCY`, `MCZ`, and `MCMtrx`, the **last** qubit in the list is the target; all preceding qubits are controls:
+
+```python
+circ = QrackCircuit(3)
+circ.append_gate(GateType.MCX, [0, 1, 2])   # Toffoli: controls=0,1 target=2
+circ.append_gate(GateType.MCZ, [0, 1, 2])   # CCZ
+```
+
+#### Inverse (adjoint) circuits
+
+`inverse()` returns a new `QrackCircuit` that applies all gates in reverse order with conjugate-transposed matrices. This is useful for uncomputation and variational circuit ansätze:
+
+```python
+circ = QrackCircuit(2)
+circ.append_gate(GateType.H,    [0])
+circ.append_gate(GateType.CNOT, [0, 1])
+
+circ_inv = circ.inverse()   # Bell-state un-preparation
+
+sim = QrackSimulator(qubitCount=2)
+circ.run(sim)       # prepare Bell state
+circ_inv.run(sim)   # undo — back to |00⟩
+assert sim.prob(0) == pytest.approx(0.0, abs=1e-4)
+```
+
+#### Combining circuits
+
+`append(other)` concatenates all gates from `other` onto the end of the current circuit in-place. The other circuit's qubit count must be ≤ this circuit's qubit count:
+
+```python
+circ_a = QrackCircuit(1)
+circ_a.append_gate(GateType.X, [0])   # X
+
+circ_b = QrackCircuit(1)
+circ_b.append_gate(GateType.X, [0])   # X
+
+circ_a.append(circ_b)   # X·X = I (net identity)
+assert circ_a.gate_count == 2
+
+sim = QrackSimulator(qubitCount=1)
+circ_a.run(sim)
+assert sim.prob(0) == pytest.approx(0.0, abs=1e-4)  # still |0⟩
+```
+
+#### GateType reference
+
+| GateType | Qubits | Params | Description |
+|----------|--------|--------|-------------|
+| `H` | 1 | — | Hadamard |
+| `X` | 1 | — | Pauli X (bit flip) |
+| `Y` | 1 | — | Pauli Y |
+| `Z` | 1 | — | Pauli Z (phase flip) |
+| `S` | 1 | — | S gate (phase π/2) |
+| `T` | 1 | — | T gate (phase π/4) |
+| `IS` | 1 | — | S† (inverse S) |
+| `IT` | 1 | — | T† (inverse T) |
+| `SqrtX` | 1 | — | √X gate |
+| `ISqrtX` | 1 | — | √X† gate |
+| `RX` | 1 | `[angle]` | Rotation around X |
+| `RY` | 1 | `[angle]` | Rotation around Y |
+| `RZ` | 1 | `[angle]` | Rotation around Z |
+| `R1` | 1 | `[angle]` | Phase rotation (R1) |
+| `U` | 1 | `[θ, φ, λ]` | General U(θ, φ, λ) |
+| `Mtrx` | 1 | `[re,im × 4]` | Arbitrary 2×2 unitary (8 floats) |
+| `CNOT` | 2 | — | Controlled NOT |
+| `CY` | 2 | — | Controlled Y |
+| `CZ` | 2 | — | Controlled Z |
+| `CH` | 2 | — | Controlled Hadamard |
+| `SWAP` | 2 | — | SWAP |
+| `MCX` | ≥2 | — | Multi-controlled X (last qubit = target) |
+| `MCY` | ≥2 | — | Multi-controlled Y (last qubit = target) |
+| `MCZ` | ≥2 | — | Multi-controlled Z (last qubit = target) |
+| `MCMtrx` | ≥2 | `[re,im × 4]` | Multi-controlled 2×2 unitary |
+
+#### Error handling
+
+`QrackCircuit` raises the same typed exceptions as `QrackSimulator`:
+
+```python
+from qrackbind import GateType, QrackCircuit, QrackSimulator, QrackArgumentError, QrackQubitError
+
+circ = QrackCircuit(2)
+
+try:
+    circ.append_gate(GateType.H, [5])      # qubit 5 out of range [0, 1]
+except QrackQubitError as e:
+    print(e)
+
+try:
+    circ.run(QrackSimulator(qubitCount=1)) # circuit needs 2 qubits, sim has 1
+except QrackArgumentError as e:
+    print(e)
+```
+
+---
+
 ### Cloning
 
 `QrackSimulator` supports deep copy via `clone()` and the `copy` module:
@@ -336,6 +500,7 @@ The clone is fully independent — gates applied to one have no effect on the ot
 - **Pauli observables**: `measure_pauli`, single- and multi-qubit `exp_val` / `variance_pauli`, weighted `exp_val_floats` / `variance_floats`, `IntEnum`-compatible `Pauli` enum
 - **NumPy state-vector access**: full state vector, probability vector, and reduced density matrix as zero-copy NumPy ndarrays; per-amplitude read / write
 - **Dynamic qubit allocation**: grow and shrink the register at runtime
+- **Replayable circuits**: `QrackCircuit` + `GateType` enum — build a circuit once, replay it on any simulator, invert it for adjoint passes, and compose circuits together
 - **High performance**: Near-native C++ performance through nanobind
 - **Type safety**: Full type stubs for mypy/pyright
 - **GPU acceleration**: OpenCL and CUDA backends when available
