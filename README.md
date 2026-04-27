@@ -1,41 +1,153 @@
 # qrackbind
 
-Python bindings for the [Qrack](https://github.com/vm6502q/qrack) quantum computer simulator library.
+[Qrack](https://github.com/unitaryfoundation/qrack) is a C++ quantum simulator supporting CPU, GPU (OpenCL and CUDA), tensor network, stabilizer hybrid, and binary decision tree simulation backends. `qrackbind` provides an alternative Python interface to this simulator alongside the existing [pyqrack](https://github.com/unitaryfoundation/pyqrack) binding.
 
-## Why nanobind?
+Where pyqrack is a pure-Python wrapper that communicates with Qrack through a C shared library interface, `qrackbind` is a compiled extension module built with [nanobind](https://github.com/wjakob/nanobind). This approach provides static typing, generated `.pyi` stubs, native NumPy array integration via the DLPack protocol, and lower overhead at the Python/C++ boundary. The public API preserves the gate method names, constructor arguments, and `Pauli` enum from pyqrack, and includes deprecated aliases for the small number of methods that have been renamed, so existing pyqrack code requires minimal changes to run against `qrackbind`.
 
-qrackbind uses [nanobind](https://github.com/wjakob/nanobind) for C++ bindings instead of ctypes, giving you:
+### Motivations
 
-- **No manual marshaling** — nanobind handles Python ↔ C++ type conversion automatically (classes, methods, exceptions). ctypes requires explicit `argtypes`/`restype` declarations, manual struct packing, and pointer juggling.
-- **Near-native performance** — direct C++ function calls with minimal overhead. ctypes adds function call overhead and often copies data across the boundary.
-- **Stable ABI** — compile once and the wheel works across CPython 3.12+ minor versions without recompilation. ctypes bindings can break when the underlying library changes or on different platforms.
-- **Type safety** — nanobind generates accurate type stubs that mypy/pyright understand. ctypes has no static type information; errors surface at runtime.
-- **Clean, Pythonic API** — C++ classes and methods appear as native Python objects with readable exceptions. ctypes exposes raw C signatures and opaque pointers.
+`qrackbind` addresses three primary motivations: providing a Python interface to Qrack that is compatible with AI code generation tooling, establishing a typed and performant substrate for framework integrations with PennyLane, Qiskit, and QuEra Bloqade, and improving on the runtime characteristics of the existing pyqrack binding through a compiled nanobind extension.
+
+**AI code generation compatibility**
+
+| Property | Description |
+|---|---|
+| Named parameters | All methods accept keyword arguments, producing call sites that are unambiguous regardless of argument order |
+| `.pyi` type stubs | Generated stubs for every bound class and function provide type information accessible to code analysis tools and language model context windows |
+| Typed exceptions | `QrackException`, `QrackQubitError`, and `QrackArgumentError` produce informative stack traces that identify the error source without requiring inspection of C++ internals |
+| NumPy array returns | `state_vector` and `probabilities` return `np.ndarray` directly, compatible with the scientific Python ecosystem that generated post-processing code commonly targets |
+
+**Framework ecosystem integration**
+
+PennyLane, Qiskit, and QuEra Bloqade each interact with a quantum simulator through a small, well-defined dispatch interface rather than the full gate method surface. `qrackbind` provides the `QrackCircuit` class and `GateType` enum as a typed dispatch layer shared across all three frameworks. A single gate dispatch table maps PennyLane operation names, Qiskit gate names, and Bloqade IR calls onto the same C++ methods. Migration for existing Bloqade users consists of updating the package dependency and import statements; all gate method names, constructor keyword arguments, and the `Pauli` enum are preserved without change.
+
+**Compiled extension performance**
+
+pyqrack communicates with the Qrack C++ library through Python's `ctypes` module. At import time, `ctypes.CDLL` loads the Qrack shared library and resolves exported C symbols by name. Each gate call then follows a multi-step sequence at runtime: Python arguments are marshalled into ctypes-compatible types (`ctypes.c_int`, `ctypes.c_float`, `ctypes.c_double`, ctypes array types for vector arguments), the ctypes foreign function interface constructs a C call frame, the call crosses the Python/C boundary, and the return value is unmarshalled back into a Python object. For array arguments such as gate matrices or qubit index lists, pyqrack allocates an intermediate ctypes array on each call — for example, a complex matrix argument is unpacked into real/imaginary pairs and loaded into a `c_double` array before the call, then discarded afterward.
+
+`qrackbind` replaces this with a compiled nanobind extension module. Type conversion between Python objects and C++ types is handled at compile time through nanobind's type caster infrastructure, and the call dispatch path is a direct C function call with no intermediate marshalling step. Vector arguments such as qubit index lists are converted from Python lists to `std::vector` by nanobind's STL casters without allocating a ctypes array. The `state_vector` and `probabilities` properties use nanobind's `nb::ndarray` with capsule-based lifetime management, transferring the C++ buffer to Python without a secondary copy. These characteristics are most relevant for workloads that apply large numbers of short gate operations from Python, pass array arguments frequently, or read the state vector during variational circuit optimisation.
+
+## Migrating from pyqrack
+
+`qrackbind` preserves the core surface of [pyqrack](https://github.com/unitaryfoundation/pyqrack): gate method names, constructor keyword arguments, and the `Pauli` enum are identical. A small number of method names have been updated to follow Python naming conventions. Deprecated aliases for the previous names are included and emit `DeprecationWarning` at runtime.
+
+### API changes
+
+| pyqrack | qrackbind | Notes |
+|---|---|---|
+| `from pyqrack import QrackSimulator` | `from qrackbind import QrackSimulator` | One line per file |
+| `sim.m(q)` | `sim.measure(q)` | `m()` retained as a deprecated alias |
+| `sim.m_all()` | `sim.measure_all()` | `m_all()` retained as a deprecated alias |
+| `sim.get_state_vector()` | `sim.state_vector` | Property returning `np.ndarray[complex64]` |
+| `sim.get_num_qubits()` | `sim.num_qubits` | Property |
+
+### Preserved API
+
+The following are unchanged and require no modification in existing code:
+
+```python
+# Constructor keyword arguments are identical to pyqrack
+sim = QrackSimulator(
+    qubitCount=12,
+    isTensorNetwork=True,
+    isStabilizerHybrid=False,
+    isSchmidtDecompose=True,
+    isPaged=True,
+    isCpuGpuHybrid=True,
+    isOpenCL=True,
+)
+
+# Gate method names are unchanged
+sim.h(0)
+sim.x(1)
+sim.rx(0.5, 2)
+sim.mcx([0, 1], 2)    # multiply-controlled X
+sim.macx([0], 1)      # anti-controlled X
+sim.swap(0, 1)
+
+# Pauli enum values are unchanged
+from qrackbind import Pauli
+ev = sim.exp_val_pauli([Pauli.PauliZ, Pauli.PauliZ], [0, 1])
+```
+
+For downstream projects such as `bloqade-pyqrack`, migration consists of updating the package dependency declaration and import statements. Gate dispatch calls (`h`, `x`, `mcx`, etc.) are unchanged.
+
+---
+
+## API Design
+
+### Named parameters
+
+All methods accept named parameters in addition to positional ones:
+
+```python
+sim.rx(angle=0.5, qubit=0)
+sim.mcx(controls=[0, 1], target=2)
+sim.exp_val_pauli(paulis=[Pauli.PauliZ, Pauli.PauliZ], qubits=[0, 1])
+```
+
+### Type stubs
+
+`qrackbind` ships `.pyi` stub files generated from the nanobind extension. The stubs reflect the actual C++ signatures and are compatible with Pyright, mypy, and IDE language servers:
+
+```python
+class QrackSimulator:
+    def exp_val_pauli(
+        self,
+        paulis: list[Pauli],
+        qubits: list[int],
+    ) -> float: ...
+
+    @property
+    def state_vector(self) -> numpy.ndarray[numpy.complex64]: ...
+```
+
+### Typed exceptions
+
+Errors raise typed exceptions from a project-specific hierarchy:
+
+- `QrackException` — base class for all qrackbind errors (inherits `RuntimeError`)
+- `QrackQubitError` — qubit index out of the valid range
+- `QrackArgumentError` — invalid method arguments
+
+```python
+try:
+    sim.h(99)
+except QrackQubitError as e:
+    print(e)  # QrackQubitError: qubit 99 out of range [0, 3]
+```
+
+### NumPy integration
+
+`state_vector` and `probabilities` return NumPy arrays via nanobind's `nb::ndarray` mechanism. The C++ buffer is allocated by the binding layer, filled by Qrack, and transferred to Python under capsule-based lifetime management. The Python garbage collector is responsible for deallocation; no secondary copy is made.
+
+```python
+sv    = sim.state_vector    # np.ndarray[complex64], shape (2^n,)
+probs = sim.probabilities   # np.ndarray[float32],  shape (2^n,)
+
+fidelity = np.abs(np.dot(sv.conj(), target_sv)) ** 2
+entropy  = -np.sum(probs * np.log2(probs + 1e-12))
+```
+
+## Project Phases and Status
+
+| Phase | Title | Description | Status |
+|---|---|---|---|
+| 0 | Project Scaffold | uv + scikit-build-core project structure, CMakeLists.txt, justfile, smoke test | :white_check_mark: |
+| 1 | QrackSimulator Core | Full gate set, constructor, measurement, properties, multi-control gates, `multiplex1_mtrx`, pyqrack compat aliases | :white_check_mark: |
+| 2 | Dynamic Allocation, QFT, Arithmetic | Simulator registry, `cloneSid`, `allocate`/`dispose`, QFT, arithmetic gates, shift/rotate, `measure_shots` | :white_check_mark: |
+| 3 | State Vector and NumPy | `state_vector`, `probabilities`, `set_state_vector`, `get_amplitude`, reduced density matrix, `prob_all` | :white_check_mark: |
+| 4 | Enums and Pauli Operators | `Pauli` enum, `measure_pauli`, `exp_val`, `exp_val_pauli`, `variance_pauli`, `exp_val_floats` | :white_check_mark: |
+| 5 | Exception Handling | `QrackException`, `QrackQubitError`, `QrackArgumentError`, C++ exception translator | :white_check_mark: |
+| 6 | QrackCircuit | `QrackCircuit`, `GateType`, `append_gate`, `run`, `inverse`, `optimize`, `to_qasm`, `exp_val_unitary` | :construction: |
+| 7 | Stub Generation and Type Annotations | `.pyi` stubs, docstrings on all bindings, `pyright` passing | :pending: |
+| 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :pending: |
+| 9 | Packaging and Distribution | PyPI wheel via cibuildwheel, CMake `FetchContent` auto-download, `scripts/install_qrack.sh`, `uv run` scripts | :pending: |
+
 
 ## Installation
 
-### Prerequisites
-
-- Qrack library must be installed on your system
-- C++17 compiler
-- Python 3.12+
-- [uv](https://github.com/astral-sh/uv) (recommended)
-
-### Build
-
-```bash
-# Install build dependencies
-just setup
-
-# Build and install (CPU-only)
-just build-cpu
-
-# Or with GPU acceleration (requires OpenCL)
-just build
-
-# Or with CUDA
-just build-cuda
-```
+Coming soon...
 
 ## Quick Start
 
@@ -243,50 +355,6 @@ A few caveats specific to the current Qrack release (10.6.2):
   is preserved for forward compatibility but is not active until upstream fixes QPager.
 - **Arithmetic / shifts** require `isTensorNetwork=False`.
 - **Dynamic `allocate` / `dispose`** require `isTensorNetwork=False`.
-
-## Build Variants
-
-| Command | Description |
-|---------|-------------|
-| `just build` | Default (OpenCL ON) |
-| `just build-cpu` | CPU-only (OpenCL OFF) |
-| `just build-cuda` | CUDA backend |
-| `just build-double` | Double precision floats |
-| `just build-no-simd` | Disable AVX/SSE3 |
-
-## Development
-
-```bash
-# Run all tests
-just test
-
-# Run just the gate tests
-uv run pytest tests/test_qrack_gates.py -v
-
-# Format code
-just fmt
-
-# Lint
-just lint
-
-# Type check
-just typecheck
-
-# Generate type stubs
-just stubs
-```
-
-## Architecture
-
-```
-Python API (src/qrackbind/)
-    ↓
-nanobind C++ bindings (bindings/)
-    ↓
-Qrack C++ library (system-installed)
-    ↓
-OpenCL / CUDA drivers (optional GPU backend)
-```
 
 ## License
 
