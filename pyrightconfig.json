@@ -1,0 +1,12 @@
+{
+    "include": ["src", "tests"],
+    "exclude": ["build", "_skbuild", ".venv", "src/qrackbind/_core.pyi"],
+    "venvPath": ".",
+    "venv": ".venv",
+    "pythonVersion": "3.12",
+    "typeCheckingMode": "standard",
+    "reportMissingModuleSource": "none",
+    "reportUnknownMemberType": "none",
+    "reportUnknownVariableType": "none",
+    "reportAttributeAccessIssue": "none"
+}

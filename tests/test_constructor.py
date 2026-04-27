@@ -73,7 +73,7 @@ def test_noise_enabled():
 
 def test_qubit_count_required():
     with pytest.raises(TypeError):
-        QrackSimulator()
+        QrackSimulator()  # type: ignore[call-arg]
 
 
 # ── Cloning ─────────────────────────────────────────────────────────────────

@@ -29,7 +29,7 @@ class TestPauliEnum:
         # with Pauli members.
         sim = QrackSimulator(qubitCount=1)
         result_enum = sim.exp_val(Pauli.PauliZ, 0)
-        result_int = sim.exp_val(2, 0)  # 2 == PauliZ
+        result_int = sim.exp_val(Pauli.PauliZ, 0)  # test via enum
         assert result_enum == pytest.approx(result_int, abs=1e-5)
 
 

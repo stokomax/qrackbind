@@ -7,12 +7,28 @@ from typing import Annotated
 import numpy
 from numpy.typing import NDArray
 
-from qrackbind import (
-    QrackArgumentError as QrackArgumentError,
-    QrackException as QrackException,
-    QrackQubitError as QrackQubitError
-)
+class QrackException(RuntimeError):
+    """
+    Base class for all qrackbind errors.
 
+    Inherits RuntimeError so it can be caught by generic error handlers.
+    """
+
+class QrackQubitError(QrackException):
+    """
+    Qubit index out of the valid range [0, num_qubits).
+
+    Raised when a gate or measurement method is called with an index
+    that exceeds the simulator's qubit count.
+    """
+
+class QrackArgumentError(QrackException):
+    """
+    Invalid method arguments.
+
+    Raised when arguments have the wrong type, length mismatch,
+    out-of-range values, or other argument validation failures.
+    """
 
 class Pauli(enum.IntEnum):
     """
