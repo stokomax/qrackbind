@@ -26,4 +26,41 @@ using real1_f   = float;
 namespace nb = nanobind;
 using namespace Qrack;
 
+// ── Phase 5: typed exceptions ───────────────────────────────────────────────
+// Every error path in the C++ bindings throws QrackError with a kind tag.
+// bindings/exceptions.cpp registers a translator that maps each kind to one
+// of three Python exception classes:
+//
+//   QrackError(...)                                    → qrackbind.QrackException
+//   QrackError(..., QrackErrorKind::QubitOutOfRange)   → qrackbind.QrackQubitError
+//   QrackError(..., QrackErrorKind::InvalidArgument)   → qrackbind.QrackArgumentError
+//
+// The Python type pointers below are populated by bind_exceptions(m).
+
+enum class QrackErrorKind {
+    Generic,
+    QubitOutOfRange,
+    InvalidArgument,
+};
+
+class QrackError : public std::exception {
+public:
+    explicit QrackError(std::string msg,
+                        QrackErrorKind kind = QrackErrorKind::Generic)
+        : msg_(std::move(msg)), kind_(kind) {}
+
+    const char* what() const noexcept override { return msg_.c_str(); }
+    QrackErrorKind kind() const noexcept { return kind_; }
+
+private:
+    std::string    msg_;
+    QrackErrorKind kind_;
+};
+
+// Created by bind_exceptions(m). Borrowed strong references owned by the
+// module — never decremented.
 extern PyObject* QrackExceptionType;
+extern PyObject* QrackQubitErrorType;
+extern PyObject* QrackArgumentErrorType;
+
+void bind_exceptions(nb::module_& m);

@@ -144,7 +144,7 @@ struct QrackSim {
     QrackSim(bitLenInt n, const SimConfig& cfg)
         : numQubits(n), config(cfg), sim(make_simulator(n, cfg))
     {
-        if (!sim) throw std::runtime_error("QrackSimulator: factory returned null");
+        if (!sim) throw QrackError("QrackSimulator: factory returned null");
     }
 
     // Clone constructor — used by .clone() / __copy__ / __deepcopy__
@@ -153,14 +153,16 @@ struct QrackSim {
         , config(src.config)
         , sim(src.sim->Clone())
     {
-        if (!sim) throw std::runtime_error("QrackSimulator: Clone() returned null");
+        if (!sim) throw QrackError("QrackSimulator: Clone() returned null");
     }
 
     void check_qubit(bitLenInt q, const char* method) const {
         if (q >= numQubits) {
-            throw std::out_of_range(
+            throw QrackError(
                 std::string(method) + ": qubit index " + std::to_string(q) +
-                " is out of range [0, " + std::to_string(numQubits) + ")");
+                " is out of range [0, " + std::to_string(numQubits) + ")"
+                " (simulator has " + std::to_string(numQubits) + " qubits)",
+                QrackErrorKind::QubitOutOfRange);
         }
     }
     std::string repr() const {
@@ -171,7 +173,7 @@ struct QrackSim {
 static void check_arithmetic(const QrackSim& s, const char* method)
 {
     if (s.config.isTensorNetwork)
-        throw std::runtime_error(
+        throw QrackError(
             std::string(method) + ": isTensorNetwork=True is incompatible with "
             "arithmetic gates. Construct with isTensorNetwork=False.");
 }
@@ -461,7 +463,8 @@ nb::class_<QrackSim>(m, "QrackSimulator",
             bitLenInt q)
             {
                 if (m.size() < 4)
-                    throw std::invalid_argument("mtrx: matrix must have 4 elements");
+                    throw QrackError("mtrx: matrix must have 4 elements",
+                                     QrackErrorKind::InvalidArgument);
                 s.check_qubit(q, "mtrx");
                 s.sim->Mtrx(m.data(), q);
             },
@@ -475,7 +478,8 @@ nb::class_<QrackSim>(m, "QrackSimulator",
             bitLenInt q)
             {
                 if (m.size() < 4)
-                    throw std::invalid_argument("mcmtrx: matrix must have 4 elements");
+                    throw QrackError("mcmtrx: matrix must have 4 elements",
+                                     QrackErrorKind::InvalidArgument);
                 // Signature: MCMtrx(const std::vector<bitLenInt>& controls,
                 //                   const complex* mtrx, bitLenInt target)
                 // Pass vector directly — do NOT use controls.size(), controls.data()
@@ -491,7 +495,8 @@ nb::class_<QrackSim>(m, "QrackSimulator",
             bitLenInt q)
             {
                 if (m.size() < 4)
-                    throw std::invalid_argument("macmtrx: matrix must have 4 elements");
+                    throw QrackError("macmtrx: matrix must have 4 elements",
+                                     QrackErrorKind::InvalidArgument);
                 s.sim->MACMtrx(controls, m.data(), q);
             },
             nb::arg("controls"), nb::arg("matrix"), nb::arg("qubit"),
@@ -509,9 +514,10 @@ nb::class_<QrackSim>(m, "QrackSimulator",
             {
                 const size_t expected = 4ULL << controls.size();
                 if (mtrxs.size() < expected)
-                    throw std::invalid_argument(
+                    throw QrackError(
                         "multiplex1_mtrx: mtrxs must have at least 4 * 2^len(controls) = " +
-                        std::to_string(expected) + " elements");
+                        std::to_string(expected) + " elements",
+                        QrackErrorKind::InvalidArgument);
                 s.check_qubit(tgt, "multiplex1_mtrx");
                 s.sim->UniformlyControlledSingleBit(controls, tgt,
                     reinterpret_cast<const Qrack::complex*>(mtrxs.data()));
@@ -562,8 +568,9 @@ nb::class_<QrackSim>(m, "QrackSimulator",
                std::vector<bitLenInt>    qubits) -> real1_f
             {
                 if (paulis.size() != qubits.size())
-                    throw std::invalid_argument(
-                        "exp_val_pauli: paulis and qubits must have the same length");
+                    throw QrackError(
+                        "exp_val_pauli: paulis and qubits must have the same length",
+                        QrackErrorKind::InvalidArgument);
                 for (auto q : qubits)
                     s.check_qubit(q, "exp_val_pauli");
                 return s.sim->ExpectationPauliAll(qubits, paulis);
@@ -585,8 +592,9 @@ nb::class_<QrackSim>(m, "QrackSimulator",
                std::vector<bitLenInt>    qubits) -> real1_f
             {
                 if (paulis.size() != qubits.size())
-                    throw std::invalid_argument(
-                        "variance_pauli: paulis and qubits must have the same length");
+                    throw QrackError(
+                        "variance_pauli: paulis and qubits must have the same length",
+                        QrackErrorKind::InvalidArgument);
                 for (auto q : qubits)
                     s.check_qubit(q, "variance_pauli");
                 return s.sim->VariancePauliAll(qubits, paulis);
@@ -622,9 +630,10 @@ nb::class_<QrackSim>(m, "QrackSimulator",
                 // signature looks "bits + weights" but the runtime check
                 // is `weights.size() >= 2 * bits.size()`.
                 if (weights.size() != 2 * qubits.size())
-                    throw std::invalid_argument(
+                    throw QrackError(
                         "exp_val_floats: weights must contain exactly 2 entries "
-                        "per qubit (weights[2*i] for |0>, weights[2*i+1] for |1>)");
+                        "per qubit (weights[2*i] for |0>, weights[2*i+1] for |1>)",
+                        QrackErrorKind::InvalidArgument);
                 for (auto q : qubits)
                     s.check_qubit(q, "exp_val_floats");
                 std::vector<Qrack::real1_f> w(weights.begin(), weights.end());
@@ -646,9 +655,10 @@ nb::class_<QrackSim>(m, "QrackSimulator",
                std::vector<float>     weights) -> real1_f
             {
                 if (weights.size() != 2 * qubits.size())
-                    throw std::invalid_argument(
+                    throw QrackError(
                         "variance_floats: weights must contain exactly 2 entries "
-                        "per qubit (weights[2*i] for |0>, weights[2*i+1] for |1>)");
+                        "per qubit (weights[2*i] for |0>, weights[2*i+1] for |1>)",
+                        QrackErrorKind::InvalidArgument);
                 for (auto q : qubits)
                     s.check_qubit(q, "variance_floats");
                 std::vector<Qrack::real1_f> w(weights.begin(), weights.end());
@@ -864,7 +874,7 @@ nb::class_<QrackSim>(m, "QrackSimulator",
                 // expose it via QAlu inheritance or composition.
                 auto alu = std::dynamic_pointer_cast<Qrack::QAlu>(s.sim);
                 if (!alu)
-                    throw std::runtime_error(
+                    throw QrackError(
                         "pown: current simulator stack does not implement "
                         "POWModNOut. Construct with isSchmidtDecompose=False "
                         "to fall through to a QAlu-capable engine, or disable "
@@ -883,7 +893,7 @@ nb::class_<QrackSim>(m, "QrackSimulator",
                 check_arithmetic(s, "mcpown");
                 auto alu = std::dynamic_pointer_cast<Qrack::QAlu>(s.sim);
                 if (!alu)
-                    throw std::runtime_error(
+                    throw QrackError(
                         "mcpown: current simulator stack does not implement "
                         "CPOWModNOut.");
                 alu->CPOWModNOut(base, modN, inStart, outStart, length, controls);
@@ -1011,12 +1021,13 @@ nb::class_<QrackSim>(m, "QrackSimulator",
             {
                 const size_t expected = size_t(1) << s.numQubits;
                 if (arr.shape(0) != expected)
-                    throw std::invalid_argument(
+                    throw QrackError(
                         "set_state_vector: array length " +
                         std::to_string(arr.shape(0)) +
                         " does not match state space size " +
                         std::to_string(expected) +
-                        " (2^" + std::to_string(s.numQubits) + ")");
+                        " (2^" + std::to_string(s.numQubits) + ")",
+                        QrackErrorKind::InvalidArgument);
                 s.sim->SetQuantumState(
                     reinterpret_cast<const Qrack::complex*>(arr.data()));
             },

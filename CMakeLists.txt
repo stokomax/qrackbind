@@ -105,6 +105,7 @@ nanobind_add_module(
 
   # Source code goes here
   bindings/qrackbind_ext.cpp
+  bindings/exceptions.cpp
   bindings/simulator.cpp
 )
 

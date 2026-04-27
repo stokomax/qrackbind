@@ -1,35 +1,21 @@
 #include "qrackbind_core.h"
 
-PyObject* QrackExceptionType = nullptr;
-
 // Forward declarations — one per binding .cpp file
 void bind_simulator(nb::module_& m);
 
-// Module name must exactly match the CMakeLists.txt target name: _qrackbind_core
+// Module name must exactly match the CMakeLists.txt target name: _core
 NB_MODULE(_core, m) {
     m.doc() = "qrackbind — nanobind bindings for the Qrack quantum simulator";
     m.attr("__version__") = "0.1.0";
 
-    // Register a custom Python exception class.
-    // NOTE: PyErr_NewExceptionWithDoc returns a raw `PyObject*`. Assigning a
-    // raw PyObject* directly to nb::module_::attr triggers `std::bad_cast`
-    // inside nanobind's metadata machinery during NB_MODULE init, which
-    // surfaces only at module-import time as an opaque ImportError. Always
-    // wrap with nb::borrow() (or nb::handle) before assigning to attr.
-    QrackExceptionType = PyErr_NewExceptionWithDoc(
-        "qrackbind.QrackException",
-        "Exception raised by the Qrack C++ library.",
-        PyExc_RuntimeError,
-        nullptr);
-    if (QrackExceptionType)
-        m.attr("QrackException") = nb::borrow(QrackExceptionType);
-
-    nb::register_exception_translator([](const std::exception_ptr& p, void*) {
-        try { std::rethrow_exception(p); }
-        catch (const std::exception& e) {
-            PyErr_SetString(QrackExceptionType, e.what());
-        }
-    });
+    // bind_exceptions MUST be called first. nanobind processes
+    // exception translators in LIFO order — the most recently registered
+    // translator runs first. Registering exceptions first means our
+    // QrackError translator runs before nanobind's default
+    // ``std::exception → RuntimeError`` translator, so qrackbind errors
+    // surface as the typed QrackException hierarchy instead of generic
+    // RuntimeError. See bindings/exceptions.cpp for the full design.
+    bind_exceptions(m);
 
     // Pauli operator basis for single-qubit observables.
     //
@@ -61,5 +47,5 @@ NB_MODULE(_core, m) {
 
     bind_simulator(m);
 
-    // Future bind_circuit(m);  bind_exceptions(m);
+    // Future bind_circuit(m);
 }

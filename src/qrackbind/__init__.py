@@ -22,6 +22,19 @@ Pauli-aware methods on :class:`QrackSimulator`:
 * ``exp_val_all(basis)`` — broadcast a single basis across all qubits
 * ``exp_val_floats(qubits, weights)`` — weighted-sum expectation value
 * ``variance_floats(qubits, weights)`` — weighted-sum variance
+
+Phase 5 — Exception hierarchy
+-----------------------------
+All errors raised by :class:`QrackSimulator` are instances of
+:class:`QrackException` (itself a subclass of ``RuntimeError``):
+
+* :class:`QrackException` — base class for any qrackbind error
+* :class:`QrackQubitError` — qubit index out of range ``[0, num_qubits)``
+* :class:`QrackArgumentError` — invalid arguments (length mismatch,
+  wrong array size, etc.)
+
+Catch :class:`QrackException` to handle any qrackbind-specific failure;
+the subclasses allow narrower handling when needed.
 """
 
 # Import from _qrackbind_core — the underscore marks it as a private
@@ -30,7 +43,13 @@ import warnings
 
 import numpy as np
 
-from ._core import QrackSimulator as _QrackSimulator, Pauli, QrackException
+from ._core import (
+    QrackSimulator as _QrackSimulator,
+    Pauli,
+    QrackException,
+    QrackQubitError,
+    QrackArgumentError,
+)
 
 
 class QrackSimulator(_QrackSimulator):
@@ -84,5 +103,11 @@ class QrackSimulator(_QrackSimulator):
         return self.num_qubits
 
 
-__all__ = ["Pauli", "QrackException", "QrackSimulator"]
+__all__ = [
+    "Pauli",
+    "QrackArgumentError",
+    "QrackException",
+    "QrackQubitError",
+    "QrackSimulator",
+]
 __version__ = "0.1.0"
