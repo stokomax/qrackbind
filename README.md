@@ -141,7 +141,7 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 | 5 | Exception Handling | `QrackException`, `QrackQubitError`, `QrackArgumentError`, C++ exception translator | :white_check_mark: |
 | 6 | QrackCircuit | `QrackCircuit`, `GateType`, `append_gate`, `run`, `inverse`, `append`, `gate_count`, `exp_val_unitary` | :white_check_mark: |
 | 7 | Stub Generation and Type Annotations | `.pyi` stubs, docstrings on all bindings, `pyright` passing | :construction: |
-| 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :construction: |
+| 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :white_check_mark: |
 | 9 | Packaging and Distribution | PyPI wheel via cibuildwheel, CMake `FetchContent` auto-download, `scripts/install_qrack.sh`, `uv run` scripts | :construction: |
 
 
@@ -478,6 +478,77 @@ try:
 except QrackArgumentError as e:
     print(e)
 ```
+
+### PennyLane Device Plugin
+
+`qrackbind` ships a PennyLane 0.44+ device plugin via `qrackbind.pennylane`. The `QrackDevice` class integrates with PennyLane's device plugin architecture, enabling Qrack as a drop-in simulator for PennyLane QNodes.
+
+```python
+import pennylane as qml
+
+# Create a QrackDevice with 2 qubits
+dev = qml.device("qrackbind.simulator", wires=2)
+
+# Run a QNode
+@qml.qnode(dev)
+def circuit(x):
+    qml.Hadamard(wires=0)
+    qml.CNOT(wires=[0, 1])
+    qml.RX(x, wires=0)
+    return qml.expval(qml.PauliZ(0) @ qml.PauliZ(1))
+
+result = circuit(0.5)
+print(result)  # ≈ cos(0.5) ≈ 0.877
+```
+
+#### Parameter-shift gradients
+
+The device supports parameter-shift differentiation (`diff_method="parameter-shift"`). Use `argnums=` on `qml.grad()` since NumPy 2.0 removed the `requires_grad` attribute:
+
+```python
+@qml.qnode(dev, diff_method="parameter-shift")
+def circuit(x):
+    qml.RX(x, wires=0)
+    return qml.expval(qml.PauliZ(0))
+
+import numpy as np
+x = np.array(0.5)
+grad = qml.grad(circuit, argnums=0)(x)
+print(grad)  # ≈ -sin(0.5) ≈ -0.479
+```
+
+#### Measurements
+
+All standard PennyLane measurements are supported:
+
+```python
+@qml.qnode(dev)
+def circuit():
+    qml.Hadamard(wires=0)
+    return qml.state(), qml.probs(wires=[0]), qml.sample(wires=[0, 1])
+
+sv, probs, samples = circuit()
+# sv:       full 2^2 = 4 element state vector
+# probs:    [0.5, 0.5]
+# samples:  array of measurement outcomes
+```
+
+#### Simulator configuration
+
+QrackSimulator keyword arguments are forwarded directly to the device constructor:
+
+```python
+dev = qml.device(
+    "qrackbind.simulator",
+    wires=4,
+    isTensorNetwork=True,   # tensor-network simulation
+    isOpenCL=True,          # GPU acceleration
+)
+```
+
+#### Gate support
+
+30+ PennyLane operations are natively supported: `Hadamard`, `PauliX/Y/Z`, `S`, `T`, `SX`, `RX/RY/RZ/R1`, `CNOT`, `CY`, `CZ`, `SWAP`, `ISWAP`, `Toffoli`, `CCZ`, `MCX/MCY/MCZ`, `CH`, `CRX/CRY/CRZ`, `PhaseShift`, `Rot`, `U`, `MultiControlledX`, `ControlledQubitUnitary`, and more. Gates not in the native list (e.g. `IsingXX`, `IsingYY`, `IsingZZ`) are decomposed by PennyLane before reaching the device.
 
 ---
 
