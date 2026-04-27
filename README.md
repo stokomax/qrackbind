@@ -140,9 +140,9 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 | 4 | Enums and Pauli Operators | `Pauli` enum, `measure_pauli`, `exp_val`, `exp_val_pauli`, `variance_pauli`, `exp_val_floats` | :white_check_mark: |
 | 5 | Exception Handling | `QrackException`, `QrackQubitError`, `QrackArgumentError`, C++ exception translator | :white_check_mark: |
 | 6 | QrackCircuit | `QrackCircuit`, `GateType`, `append_gate`, `run`, `inverse`, `optimize`, `to_qasm`, `exp_val_unitary` | :construction: |
-| 7 | Stub Generation and Type Annotations | `.pyi` stubs, docstrings on all bindings, `pyright` passing | :pending: |
-| 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :pending: |
-| 9 | Packaging and Distribution | PyPI wheel via cibuildwheel, CMake `FetchContent` auto-download, `scripts/install_qrack.sh`, `uv run` scripts | :pending: |
+| 7 | Stub Generation and Type Annotations | `.pyi` stubs, docstrings on all bindings, `pyright` passing | :construction: |
+| 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :construction: |
+| 9 | Packaging and Distribution | PyPI wheel via cibuildwheel, CMake `FetchContent` auto-download, `scripts/install_qrack.sh`, `uv run` scripts | :construction: |
 
 
 ## Installation
@@ -359,4 +359,3 @@ A few caveats specific to the current Qrack release (10.6.2):
 ## License
 
 MIT
->>>>>>> 03274ef (feat: initial qrackbind — Phase 1 + Phase 2 surface)
