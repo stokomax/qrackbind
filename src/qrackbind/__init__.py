@@ -51,6 +51,8 @@ from ._core import (
     QrackException,
     QrackQubitError,
     QrackArgumentError,
+    QrackStabilizer,                                    # Phase 10: imported directly — no state access to wrap
+    QrackStabilizerHybrid as _QrackStabilizerHybrid,   # Phase 10: wrapped below for state_vector property
 )
 
 
@@ -105,6 +107,35 @@ class QrackSimulator(_QrackSimulator):
         return self.num_qubits
 
 
+class QrackStabilizerHybrid(_QrackStabilizerHybrid):
+    """
+    Stabilizer-hybrid simulator with automatic fallback to dense simulation.
+
+    Exposes state_vector and probabilities as Python properties (the C++
+    binding uses the _impl suffix pattern, same as QrackSimulator).
+    """
+
+    __slots__ = ()
+
+    @property
+    def state_vector(self) -> "np.ndarray":
+        """Full state vector snapshot. Available before and after dense fallback.
+
+        Before a non-Clifford gate is applied, Qrack materialises amplitudes
+        from the stabilizer tableau. After fallback, returns the dense vector
+        directly. Returns a copy; does not collapse the state.
+        """
+        return self._state_vector_impl()
+
+    @property
+    def probabilities(self) -> "np.ndarray":
+        """Probability of each basis state as a 1-D float NumPy array.
+
+        Equivalent to ``abs(state_vector)**2``. Does not collapse the state.
+        """
+        return self._probabilities_impl()
+
+
 __all__ = [
     "GateType",
     "Pauli",
@@ -113,5 +144,7 @@ __all__ = [
     "QrackException",
     "QrackQubitError",
     "QrackSimulator",
+    "QrackStabilizer",
+    "QrackStabilizerHybrid",
 ]
 __version__ = "0.1.0"

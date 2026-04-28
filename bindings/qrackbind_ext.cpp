@@ -2,7 +2,8 @@
 
 // Forward declarations — one per binding .cpp file
 void bind_simulator(nb::module_& m);
-void bind_circuit (nb::module_& m);
+void bind_circuit  (nb::module_& m);
+void bind_stabilizer(nb::module_& m);   // Phase 10: QrackStabilizer + QrackStabilizerHybrid
 
 // Module name must exactly match the CMakeLists.txt target name: _core
 NB_MODULE(_core, m) {
@@ -48,4 +49,5 @@ NB_MODULE(_core, m) {
 
     bind_simulator(m);
     bind_circuit(m);
+    bind_stabilizer(m);   // after simulator and circuit
 }

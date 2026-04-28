@@ -108,6 +108,7 @@ nanobind_add_module(
   bindings/exceptions.cpp
   bindings/simulator.cpp
   bindings/circuit.cpp
+  bindings/stabilizer.cpp
 )
 
 target_include_directories(_core PRIVATE ${QRACK_INCLUDE})

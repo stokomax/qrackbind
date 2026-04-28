@@ -143,6 +143,7 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 | 7 | Stub Generation and Type Annotations | `.pyi` stubs, docstrings on all bindings, `pyright` passing | :construction: |
 | 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :white_check_mark: |
 | 9 | Packaging and Distribution | PyPI wheel via cibuildwheel, CMake `FetchContent` auto-download, `scripts/install_qrack.sh`, `uv run` scripts | :construction: |
+| 10 | Stabilizer Classes | `QrackStabilizer` (pure Clifford) and `QrackStabilizerHybrid` (Clifford+fallback) standalone classes, templated gate helpers | :white_check_mark: |
 
 
 ## Installation
@@ -479,6 +480,126 @@ except QrackArgumentError as e:
     print(e)
 ```
 
+### QrackStabilizer and QrackStabilizerHybrid
+
+#### Why dedicated stabilizer classes?
+
+`QrackSimulator(isStabilizerHybrid=True)` already routes through Qrack's Clifford-hybrid engine, but it always does so _underneath_ the `QINTERFACE_TENSOR_NETWORK` and `QINTERFACE_QUNIT` upper layers. The `QrackStabilizer` and `QrackStabilizerHybrid` classes expose the engines directly, without those wrapping layers. There are three reasons to reach for them:
+
+| Reason | What it enables |
+|--------|-----------------|
+| **Typed Clifford contract** | `QrackStabilizer` only exposes Clifford gates. Non-Clifford methods (`rx`, `t`, `mtrx`, …) do not exist on the object — Pyright and IDE autocomplete catch incorrect usage at edit time rather than at runtime inside C++. |
+| **Stack-overhead control** | Skipping `QINTERFACE_TENSOR_NETWORK` / `QINTERFACE_QUNIT` removes two management layers. Useful for benchmarking the bare stabilizer engine and for circuits where the upper layers add cost without benefit. |
+| **Framework plugin targets** | Direct device names `qrackbind.stabilizer` and `qrackbind.stabilizer_hybrid` can map onto these classes without threading `isStabilizerHybrid=True` through `QrackSimulator` kwargs. |
+
+The `isStabilizerHybrid` flag on `QrackSimulator` remains for backward compatibility with pyqrack and Bloqade users.
+
+**Which class should you use?**
+
+- `QrackStabilizerHybrid` is the right choice for almost everyone — it accepts the full gate set, falls back gracefully to dense simulation when non-Clifford gates appear, and exposes `state_vector` / `probabilities` throughout.
+- `QrackStabilizer` is a specialty / strict-mode tool: use it when you want a typed Clifford-only contract enforced at the IDE level, when you need the lowest-overhead engine for benchmarking, or when you are proving to yourself that a circuit is Clifford-pure.
+
+#### QrackStabilizer — pure Clifford engine
+
+`QrackStabilizer` wraps Qrack's `QINTERFACE_STABILIZER` engine directly. Memory cost grows polynomially with qubit count (O(n²) for the stabilizer tableau), so a 50-qubit GHZ state that would require 2⁵⁰ complex amplitudes in a dense simulator is trivial here.
+
+Exposed: H, X, Y, Z, S, S†, √X, √X†, CNOT, CY, CZ, SWAP, iSWAP, and their 1-control multi-controlled forms, all measurement methods, and Pauli expectation values.
+
+**Deliberately omitted**: `rx`, `ry`, `rz`, `r1`, `u`, `t`, `tdg`, `mtrx`, `mcmtrx` (non-Clifford), and `state_vector` / `probabilities` (the stabilizer engine stores a tableau, not amplitudes; materialising the dense vector defeats the purpose).
+
+```python
+from qrackbind import QrackStabilizer, Pauli
+
+# ── Typed Clifford-only API ──────────────────────────────────────────────────
+stab = QrackStabilizer(qubitCount=4)
+stab.h(0)
+stab.cnot(0, 1)                         # Clifford: fine
+# stab.rx(0.5, 0)                       # AttributeError — method does not exist
+
+# ── 50-qubit GHZ in O(n²) memory ────────────────────────────────────────────
+ghz = QrackStabilizer(qubitCount=50)
+ghz.h(0)
+for q in range(1, 50):
+    ghz.cnot(0, q)                      # all qubits entangled
+
+first = ghz.measure(0)
+for q in range(1, 50):
+    assert ghz.measure(q) == first      # all outcomes agree
+
+# ── Pauli expectation values ─────────────────────────────────────────────────
+s = QrackStabilizer(qubitCount=1)
+print(s.exp_val(Pauli.PauliZ, 0))       # → 1.0   (|0> is +1 eigenstate of Z)
+s.x(0)
+print(s.exp_val(Pauli.PauliZ, 0))       # → -1.0  (|1> is -1 eigenstate of Z)
+
+# ── Context manager ──────────────────────────────────────────────────────────
+with QrackStabilizer(qubitCount=2) as s:
+    s.h(0); s.cnot(0, 1)
+    print(s.prob(0))                    # 0.5
+```
+
+> **Runtime note**: `QrackStabilizer.mcx([c1, c2], target)` raises `QrackException` because the Toffoli gate is not Clifford. Only 1-control MCX (= CNOT) is supported on the pure stabilizer engine. Use `QrackStabilizerHybrid` or `QrackSimulator` for multi-control gates.
+
+#### QrackStabilizerHybrid — Clifford with automatic dense fallback
+
+`QrackStabilizerHybrid` wraps `[QINTERFACE_STABILIZER_HYBRID, QINTERFACE_HYBRID]`. It starts in stabilizer mode (polynomial memory) and transparently switches to a dense simulation as soon as a non-Clifford gate is applied. The full gate surface is available and `state_vector` / `probabilities` work before and after the fallback.
+
+The `set_t_injection(True)` gadget (on by default) defers the dense fallback further for near-Clifford circuits — T gates and small-angle rotations are handled via a Clifford+T approximation for as long as possible. This is the default for Clifford+RZ workloads such as variational circuits with Pauli-exponential layers.
+
+```python
+import math
+from qrackbind import QrackStabilizerHybrid, QrackSimulator
+
+# ── Construction and mode inspection ────────────────────────────────────────
+shyb = QrackStabilizerHybrid(qubitCount=4)
+print(shyb.is_clifford)               # True  — engine is a Clifford-type interface
+
+# ── Clifford circuit stays efficient ─────────────────────────────────────────
+shyb.h(0); shyb.cnot(0, 1); shyb.cnot(1, 2); shyb.cnot(2, 3)
+print(shyb.is_clifford)               # True  — still in stabilizer representation
+
+# ── Non-Clifford gate triggers dense fallback (transparent) ─────────────────
+shyb.rx(0.5, 0)                       # no exception; falls back to dense internally
+print(shyb.prob(0))                   # correct probability, computed from dense state
+
+# ── state_vector available at any point ──────────────────────────────────────
+s = QrackStabilizerHybrid(qubitCount=2)
+s.rx(math.pi, 0)                      # X-like rotation
+sv = s.state_vector                   # np.ndarray, shape (4,)
+print(abs(sv[1]))                     # ≈ 1.0  (|01> state)
+
+# ── T-injection: same observable result, different cost path ─────────────────
+a = QrackStabilizerHybrid(qubitCount=1)
+a.set_t_injection(True)               # near-Clifford path (default)
+a.h(0); a.rz(math.pi / 3, 0); a.h(0)
+print(a.prob(0))
+
+b = QrackStabilizerHybrid(qubitCount=1)
+b.set_t_injection(False)              # force dense path immediately
+b.h(0); b.rz(math.pi / 3, 0); b.h(0)
+print(b.prob(0))                      # same answer, different memory usage
+
+# ── Same probabilities as QrackSimulator(isStabilizerHybrid=True) ────────────
+ref = QrackSimulator(qubitCount=3, isStabilizerHybrid=True)
+ref.h(0); ref.cnot(0, 1); ref.cnot(1, 2)
+for q in range(3):
+    assert s.prob(q) == pytest.approx(ref.prob(q), abs=1e-4)
+```
+
+#### Constructor flags
+
+Both classes accept flags that select the dense fallback backend (relevant only for `QrackStabilizerHybrid` after a non-Clifford gate appears):
+
+```python
+QrackStabilizerHybrid(
+    qubitCount=8,
+    isCpuGpuHybrid=True,   # automatically choose CPU or GPU based on problem size
+    isOpenCL=True,          # enable GPU acceleration (silently degrades to CPU if unavailable)
+    isHostPointer=False,    # use device memory for GPU buffers
+    isSparse=False,         # sparse state-vector representation
+)
+```
+
 ### PennyLane Device Plugin
 
 `qrackbind` ships a PennyLane 0.44+ device plugin via `qrackbind.pennylane`. The `QrackDevice` class integrates with PennyLane's device plugin architecture, enabling Qrack as a drop-in simulator for PennyLane QNodes.
@@ -591,6 +712,7 @@ The clone is fully independent — gates applied to one have no effect on the ot
 - **NumPy state-vector access**: full state vector, probability vector, and reduced density matrix as zero-copy NumPy ndarrays; per-amplitude read / write
 - **Dynamic qubit allocation**: grow and shrink the register at runtime
 - **Replayable circuits**: `QrackCircuit` + `GateType` enum — build a circuit once, replay it on any simulator, invert it for adjoint passes, and compose circuits together
+- **Stabilizer simulation**: `QrackStabilizer` (pure Clifford, O(n²) memory) and `QrackStabilizerHybrid` (Clifford with automatic dense fallback) expose Qrack's stabilizer engines directly without the tensor-network / QUnit overhead layer
 - **High performance**: Near-native C++ performance through nanobind
 - **Type safety**: Full type stubs for mypy/pyright
 - **GPU acceleration**: OpenCL and CUDA backends when available
