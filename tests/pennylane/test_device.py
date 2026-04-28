@@ -198,7 +198,7 @@ class TestGateCoverage:
             qml.PhaseShift(phi, wires=0)
             qml.Hadamard(wires=0)
             return qml.expval(qml.PauliZ(0))
-        assert circuit(math.pi) == pytest.approx(0.0, abs=1e-4)
+        assert circuit(math.pi) == pytest.approx(-1.0, abs=1e-4)
 
 
 # ── VQE smoke test ────────────────────────────────────────────────────────────

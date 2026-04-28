@@ -11,7 +11,10 @@ from qrackbind import QrackSimulator, Pauli
 
 def _basis_state_int(bits: list[int]) -> int:
     """Convert a list of 0/1 bit values to an integer (MSB first)."""
-    return int(sum(b << (len(bits) - 1 - i) for i, b in enumerate(bits)))
+    # Qrack basis indexing treats wire 0 as the least-significant bit.  This
+    # keeps qml.BasisState bit order aligned with qml.probs wire ordering in
+    # the device's marginal-probability routine.
+    return int(sum(int(b) << i for i, b in enumerate(bits)))
 
 
 # ── GATE_DISPATCH ─────────────────────────────────────────────────────────────
@@ -40,7 +43,9 @@ GATE_DISPATCH: dict[str, callable] = {
     "RX": lambda sim, w, p: sim.rx(p[0], w[0]),
     "RY": lambda sim, w, p: sim.ry(p[0], w[0]),
     "RZ": lambda sim, w, p: sim.rz(p[0], w[0]),
-    "PhaseShift": lambda sim, w, p: sim.r1(p[0], w[0]),  # R1 in Qrack
+    # Qrack's bound r1/RT behaves as a global phase in this stack; implement
+    # PennyLane's relative phase diag(1, exp(iφ)) via an explicit matrix.
+    "PhaseShift": lambda sim, w, p: sim.mtrx(_phase_matrix(p[0]), w[0]),
     "Rot": lambda sim, w, p: sim.u(p[0], p[1], p[2], w[0]),  # U(θ,φ,λ)
     "U": lambda sim, w, p: sim.u(p[0], p[1], p[2], w[0]),
     "U3": lambda sim, w, p: sim.u(p[0], p[1], p[2], w[0]),

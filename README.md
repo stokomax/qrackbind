@@ -550,6 +550,25 @@ dev = qml.device(
 
 30+ PennyLane operations are natively supported: `Hadamard`, `PauliX/Y/Z`, `S`, `T`, `SX`, `RX/RY/RZ/R1`, `CNOT`, `CY`, `CZ`, `SWAP`, `ISWAP`, `Toffoli`, `CCZ`, `MCX/MCY/MCZ`, `CH`, `CRX/CRY/CRZ`, `PhaseShift`, `Rot`, `U`, `MultiControlledX`, `ControlledQubitUnitary`, and more. Gates not in the native list (e.g. `IsingXX`, `IsingYY`, `IsingZZ`) are decomposed by PennyLane before reaching the device.
 
+`PhaseShift` is implemented with an explicit 2×2 phase matrix so it follows
+PennyLane semantics (`diag(1, exp(iφ))`). This differs from the low-level Qrack
+`r1`/`RT` binding documented above, which behaves as a global phase rotation in
+the current Qrack stack and therefore does not change probabilities by itself.
+
+#### Test coverage
+
+The PennyLane integration is covered by the focused Phase 8 tests in
+`tests/test_pennylane_device.py` and by the adapted compatibility suite under
+`tests/pennylane/`. The compatibility suite exercises state preparation,
+single-, two-, three-, and four-qubit operation application, parametrized gates,
+unitaries, probabilities, expectations, variances, and parameter-shift gradients
+through the qrackbind device API.
+
+```bash
+uv run pytest tests/test_pennylane_device.py tests/pennylane -q
+# 88 passed
+```
+
 ---
 
 ### Cloning

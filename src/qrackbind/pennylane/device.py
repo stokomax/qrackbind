@@ -102,7 +102,12 @@ class QrackDevice(Device):
         # For StateMP with no wires specified, PennyLane expects the full
         # 2^(num_device_qubits) state vector, not a reduced state.
         num_qubits = len(self.wires)
-        wire_map = {wire: idx for idx, wire in enumerate(circuit.wires)}
+        # Map against device wires, not active circuit wires.  PennyLane
+        # measurements such as qml.probs() with no explicit wires refer to the
+        # full device register, including idle wires.  Using circuit.wires here
+        # collapses full-register probability measurements to length 1 for
+        # circuits whose only operation is state preparation.
+        wire_map = {wire: idx for idx, wire in enumerate(self.wires)}
 
         sim = self._make_simulator(num_qubits)
 
@@ -133,7 +138,11 @@ class QrackDevice(Device):
         elif isinstance(m, meas.VarianceMP):
             return self._variance(sim, m.obs, wire_map)
         elif isinstance(m, meas.ProbabilityMP):
-            wires = [wire_map[w] for w in m.wires]
+            wires = (
+                [wire_map[w] for w in m.wires]
+                if m.wires
+                else list(range(sim.num_qubits))
+            )
             return self._probabilities(sim, wires)
         elif isinstance(m, meas.StateMP):
             return sim.state_vector.astype(np.complex128)
