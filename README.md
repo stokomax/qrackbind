@@ -144,6 +144,8 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 | 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :white_check_mark: |
 | 9 | Packaging and Distribution | PyPI wheel via cibuildwheel, CMake `FetchContent` auto-download, `scripts/install_qrack.sh`, `uv run` scripts | :construction: |
 | 10 | Stabilizer Classes | `QrackStabilizer` (pure Clifford) and `QrackStabilizerHybrid` (Clifford+fallback) standalone classes, templated gate helpers | :white_check_mark: |
+| 12 | Approximation Knobs and QBDD Engine | SDRP/NCRP tunable approximation on `QrackSimulator` and `QrackStabilizerHybrid`; `QrackQBdd` / `QrackQBddHybrid` standalone classes; `qrackbind.qbdd` and `qrackbind.qbdd_hybrid` PennyLane devices | :construction: |
+| 13 | Batched Parameter Execution and Kernel Matrix | `run_batch(circuit, params)` for amortised multi-shot parameter sweeps; `kernel_matrix(circuit, X1, X2)` for QSVM workloads; parameter-slot circuit recording in `QrackCircuit` | :construction: |
 
 
 ## Installation
