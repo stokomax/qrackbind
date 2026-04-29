@@ -74,11 +74,11 @@ test               = "pytest tests/ -v"
 build = "cp312-manylinux_x86_64"
 
 [tool.cibuildwheel.linux]
-manylinux-x86_64-image = "manylinux_2_35"
+manylinux-x86_64-image = "quay.io/pypa/manylinux_2_39_x86_64"
 # Install Qrack pre-built binary inside the container before CMake runs.
 before-all = """
 curl -fsSL \
-  https://github.com/unitaryfoundation/qrack/releases/download/vm6502q.v10.7.0/libqrack-manylinux_2_35_x86_64.zip \
+  https://github.com/unitaryfoundation/qrack/releases/download/vm6502q.v10.7.0/libqrack-manylinux_2_39_x86_64.zip \
   -o /tmp/libqrack.zip && \
 unzip -q /tmp/libqrack.zip -d /tmp/qrack && \
 cp -r /tmp/qrack/include/* /usr/local/include/ && \

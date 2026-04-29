@@ -18,7 +18,7 @@ set(QRACK_BASE_URL "https://github.com/unitaryfoundation/qrack/releases/download
 # ── Platform detection ───────────────────────────────────────────────────────
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-        set(QRACK_ARCHIVE "libqrack-manylinux_2_35_x86_64.zip")
+        set(QRACK_ARCHIVE "libqrack-manylinux_2_39_x86_64.zip")
     else()
         message(FATAL_ERROR
             "FetchQrack: unsupported Linux architecture '${CMAKE_SYSTEM_PROCESSOR}'. "
