@@ -1,4 +1,9 @@
-"""Gate dispatch table — PennyLane operation name → QrackSimulator method."""
+"""Gate dispatch table — PennyLane operation name → QrackSimulator method.
+
+Exports two dispatch tables:
+- ``GATE_DISPATCH``: full gate surface for QrackSimulator / QrackStabilizerHybrid
+- ``CLIFFORD_GATE_DISPATCH``: Clifford-only subset for QrackStabilizer
+"""
 
 from __future__ import annotations
 
@@ -132,6 +137,71 @@ def _rz_matrix(angle: float) -> list[complex]:
 
 def _phase_matrix(angle: float) -> list[complex]:
     return [1 + 0j, 0 + 0j, 0 + 0j, complex(np.exp(1j * angle))]
+
+
+# ── CLIFFORD_GATE_DISPATCH ────────────────────────────────────────────────────
+# Clifford-only subset for QrackStabilizer.
+#
+# Key differences from GATE_DISPATCH:
+#   - T, Adjoint(T) omitted — non-Clifford
+#   - RX, RY, RZ, PhaseShift, Rot, U, U2, U3 omitted — rotations are non-Clifford
+#   - CRX, CRY, CRZ, ControlledPhaseShift omitted — non-Clifford
+#   - CH uses mch() instead of mcmtrx() — mch is natively bound on QrackStabilizer
+#   - Toffoli, MultiControlledX/Y/Z omitted — 2+ control MCInvert not Clifford on
+#     the pure stabilizer engine
+#   - QubitUnitary, DiagonalQubitUnitary, ControlledQubitUnitary, ControlledUnitary
+#     omitted — arbitrary matrices not bound on QrackStabilizer
+#   - StatePrep omitted — needs set_state_vector, not available on QrackStabilizer
+#   - BasisState retained — set_permutation IS available on QrackStabilizer
+
+CLIFFORD_GATE_DISPATCH: dict[str, callable] = {
+    # ── Single-qubit Clifford ─────────────────────────────────────────────
+    "Hadamard": lambda sim, w, p: sim.h(w[0]),
+    "PauliX": lambda sim, w, p: sim.x(w[0]),
+    "PauliY": lambda sim, w, p: sim.y(w[0]),
+    "PauliZ": lambda sim, w, p: sim.z(w[0]),
+    "S": lambda sim, w, p: sim.s(w[0]),
+    "SX": lambda sim, w, p: sim.sx(w[0]),
+    "Adjoint(S)": lambda sim, w, p: sim.sdg(w[0]),
+    "Adjoint(SX)": lambda sim, w, p: sim.sxdg(w[0]),
+
+    # ── Two-qubit Clifford ────────────────────────────────────────────────
+    "CNOT": lambda sim, w, p: sim.cnot(w[0], w[1]),
+    "CY": lambda sim, w, p: sim.cy(w[0], w[1]),
+    "CZ": lambda sim, w, p: sim.cz(w[0], w[1]),
+    # CH: uses mch() — natively bound on QrackStabilizer via add_clifford_two_qubit
+    "CH": lambda sim, w, p: sim.mch([w[0]], w[1]),
+    "SWAP": lambda sim, w, p: sim.swap(w[0], w[1]),
+    "ISWAP": lambda sim, w, p: sim.iswap(w[0], w[1]),
+    "PSWAP": lambda sim, w, p: sim.iswap(w[0], w[1]),
+
+    # ── State preparation ─────────────────────────────────────────────────
+    "BasisState": lambda sim, w, p: sim.set_permutation(
+        _basis_state_int(list(p[0]))),
+}
+
+
+def dispatch_clifford_gate(sim, op) -> None:
+    """Apply a PennyLane operation to a QrackStabilizer (Clifford-only).
+
+    Args:
+        sim: QrackStabilizer instance
+        op: pennylane.Operation with .name, .wires, .parameters
+
+    Raises:
+        NotImplementedError: if the operation name is not in CLIFFORD_GATE_DISPATCH
+    """
+    name = op.name
+    wires = list(op.wires)
+    params = list(op.parameters)
+
+    handler = CLIFFORD_GATE_DISPATCH.get(name)
+    if handler is None:
+        raise NotImplementedError(
+            f"QrackStabilizerDevice: operation '{name}' is not supported "
+            f"on the pure Clifford stabilizer. Use QrackStabilizerHybridDevice "
+            f"or QrackDevice for non-Clifford operations.")
+    handler(sim, wires, params)
 
 
 # ── Dispatch ───────────────────────────────────────────────────────────────────

@@ -676,18 +676,46 @@ PennyLane semantics (`diag(1, exp(iφ))`). This differs from the low-level Qrack
 `r1`/`RT` binding documented above, which behaves as a global phase rotation in
 the current Qrack stack and therefore does not change probabilities by itself.
 
+#### Sample measurement shapes
+
+`qml.sample()` shape depends on whether an observable is provided:
+
+```python
+dev = qml.device("qrackbind.simulator", wires=2, shots=1000)
+
+@qml.qnode(dev)
+def circuit_obs():
+    qml.Hadamard(wires=0)
+    return qml.sample(qml.PauliZ(0))   # observable → eigenvalues
+
+result = circuit_obs()
+print(result.shape)   # (1000,)  — float eigenvalues: +1.0 or -1.0
+
+@qml.qnode(dev)
+def circuit_wires():
+    qml.Hadamard(wires=0)
+    qml.CNOT(wires=[0, 1])
+    return qml.sample(wires=[0, 1])    # no observable → bit strings
+
+result = circuit_wires()
+print(result.shape)   # (1000, 2) — integer bits: 0 or 1
+```
+
+This is the standard PennyLane convention: observable-based sampling returns
+a 1-D eigenvalue array; wire-based sampling returns a 2-D bit array.
+
 #### Test coverage
 
-The PennyLane integration is covered by the focused Phase 8 tests in
-`tests/test_pennylane_device.py` and by the adapted compatibility suite under
-`tests/pennylane/`. The compatibility suite exercises state preparation,
-single-, two-, three-, and four-qubit operation application, parametrized gates,
-unitaries, probabilities, expectations, variances, and parameter-shift gradients
-through the qrackbind device API.
+The PennyLane integration is covered by the adapted compatibility suite under
+`tests/pennylane/`, which exercises state preparation, single-, two-, three-,
+and four-qubit operation application, parametrized gates, unitaries,
+probabilities, expectations, variances, parameter-shift gradients, stabilizer
+device expval/variance/sampling, and the hybrid device through the qrackbind
+device API.
 
 ```bash
-uv run pytest tests/test_pennylane_device.py tests/pennylane -q
-# 88 passed
+uv run pytest tests/pennylane -q
+# 123 passed
 ```
 
 ---
@@ -732,6 +760,19 @@ A few caveats specific to the current Qrack release (10.6.2):
   is preserved for forward compatibility but is not active until upstream fixes QPager.
 - **Arithmetic / shifts** require `isTensorNetwork=False`.
 - **Dynamic `allocate` / `dispose`** require `isTensorNetwork=False`.
+
+## How this project was built
+
+The goal was to create a nanobind project that would serve as a proving ground for AI-assisted development in the quantum computing space. After evaluating options, [Qrack](https://github.com/unitaryfoundation/qrack) stood out as an excellent candidate — a high-performance C++ simulator with broad backend support and an existing Python binding to compare against.
+
+Development was driven by [Cline](https://github.com/cline/cline), an AI coding agent, following a spec-driven workflow. Each phase was written as a detailed specification (see the [`specs/`](specs/) folder) before any code was produced. Cline worked through those specs sequentially, with different language models applied at different stages — heavier reasoning models for architecture and tricky C++/nanobind problems, faster models for boilerplate and test generation.
+
+Cross-session knowledge management was handled through [Obsidian](https://obsidian.md) paired with the MCPVault MCP server, which gives the agent direct read and write access to vault notes. This workflow is described in [this blog post](https://blog.stokoe.net/obsidian-mcpvault/). A `memory-bank/` directory inside the repository captures session-to-session context — architecture decisions, active work focus, and known issues — in a form Cline re-reads at the start of every new session.
+
+## Contact
+
+**Martin Stokoe**  
+[martin@stokoe.net](mailto:martin@stokoe.net) · [LinkedIn](https://linkedin.com/in/martinstokoe)
 
 ## License
 

@@ -495,6 +495,37 @@ void add_pauli_methods(nb::class_<WrapperT>& cls)
 }
 
 
+// ── Multi-shot measurement: measure_shots ────────────────────────────────────
+// Non-collapsing multi-shot sampler using MultiShotMeasureMask.
+// Returns dict[int, int]: measurement result (as integer bit pattern) → count.
+// Available on QrackSimulator, QrackStabilizer, and QrackStabilizerHybrid.
+template <typename WrapperT>
+void add_measure_shots(nb::class_<WrapperT>& cls)
+{
+    cls
+        .def("measure_shots",
+            [](WrapperT& w, std::vector<bitLenInt> qubits, unsigned shots)
+                -> std::map<uint64_t, int>
+            {
+                std::vector<BigInteger> qpowers;
+                qpowers.reserve(qubits.size());
+                for (auto q : qubits) {
+                    w.check_qubit(q, "measure_shots");
+                    qpowers.push_back(BigInteger(1) << q);
+                }
+                auto raw = w.sim->MultiShotMeasureMask(qpowers, shots);
+                std::map<uint64_t, int> out;
+                for (const auto& kv : raw)
+                    out.emplace(static_cast<uint64_t>(kv.first), kv.second);
+                return out;
+            },
+            nb::arg("qubits"), nb::arg("shots"),
+            "Sample 'shots' measurements of 'qubits' without collapsing state.\n"
+            "Returns dict[int, int]: measurement result (integer bit pattern) → count.")
+    ;
+}
+
+
 // ── State access: _state_vector_impl, _probabilities_impl, get/set_amplitude ─
 // Cost-bearing for stabilizer engines (materialises amplitudes on demand).
 // Not added to QrackStabilizer; only QrackSimulator and QrackStabilizerHybrid.

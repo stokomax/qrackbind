@@ -148,6 +148,7 @@ void bind_stabilizer_class(nb::module_& m)
     add_clifford_gates(cls);
     add_clifford_two_qubit(cls);
     add_measurement(cls);
+    add_measure_shots(cls);
     add_pauli_methods(cls);
 
     cls
@@ -216,6 +217,7 @@ void bind_stabilizer_hybrid_class(nb::module_& m)
     add_u_gates(cls);
     add_matrix_gates(cls);
     add_measurement(cls);
+    add_measure_shots(cls);
     add_pauli_methods(cls);
     add_state_access(cls);   // _state_vector_impl, _probabilities_impl, get/set_amplitude
 

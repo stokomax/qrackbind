@@ -1,0 +1,33 @@
+schema = 3
+
+[operators.gates]
+# Clifford gates natively supported by QrackStabilizer.
+# PennyLane will decompose any gate not listed here.
+Hadamard = {}
+PauliX = {}
+PauliY = {}
+PauliZ = {}
+S = {}
+SX = {}
+CNOT = {}
+CY = {}
+CZ = {}
+CH = {}
+SWAP = {}
+ISWAP = {}
+BasisState = {}
+
+[operators.observables]
+# Only Pauli observables are supported — no state vector → no matrix fallback.
+PauliX = {}
+PauliY = {}
+PauliZ = {}
+Identity = {}
+
+[measurement_processes]
+# The pure stabilizer engine stores a tableau, not amplitudes.
+# State and full joint probability distribution are intentionally omitted.
+Expval = { conditions = [] }
+Var = { conditions = [] }
+Sample = { conditions = [] }
+Counts = { conditions = [] }

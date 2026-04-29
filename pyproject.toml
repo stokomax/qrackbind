@@ -29,7 +29,9 @@ dev = [
 ]
 
 [project.entry-points."pennylane.plugins"]
-"qrackbind.simulator" = "qrackbind.pennylane.device:QrackDevice"
+"qrackbind.simulator"        = "qrackbind.pennylane.device:QrackDevice"
+"qrackbind.stabilizer"       = "qrackbind.pennylane.stabilizer_device:QrackStabilizerDevice"
+"qrackbind.stabilizer_hybrid" = "qrackbind.pennylane.stabilizer_device:QrackStabilizerHybridDevice"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"

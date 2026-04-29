@@ -210,6 +210,7 @@ add_rotation_gates(cls);
 add_u_gates(cls);
 add_matrix_gates(cls);
 add_measurement(cls);
+add_measure_shots(cls);
 add_pauli_methods(cls);
 add_state_access(cls);
 
@@ -383,27 +384,6 @@ cls
         nb::arg("value"),
         "Reset state to the computational basis state |value>. "
         "Bit i of value sets qubit i.")
-
-    // ── Register measurement ──────────────────────────────────────────────
-    .def("measure_shots",
-        [](QrackSim& s, std::vector<bitLenInt> qubits, unsigned shots)
-            -> std::map<uint64_t, int>
-        {
-            std::vector<BigInteger> qpowers;
-            qpowers.reserve(qubits.size());
-            for (auto q : qubits) {
-                s.check_qubit(q, "measure_shots");
-                qpowers.push_back(BigInteger(1) << q);
-            }
-            auto raw = s.sim->MultiShotMeasureMask(qpowers, shots);
-            std::map<uint64_t, int> out;
-            for (const auto& kv : raw)
-                out.emplace(static_cast<uint64_t>(kv.first), kv.second);
-            return out;
-        },
-        nb::arg("qubits"), nb::arg("shots"),
-        "Sample 'shots' measurements of 'qubits' without collapsing state. "
-        "Returns dict[int, int]: measurement result -> count.")
 
     // ── Arithmetic ────────────────────────────────────────────────────────
     .def("add",
