@@ -830,7 +830,7 @@ The goal was to create a nanobind project that would serve as a proving ground f
 
 Development was driven by [Cline](https://github.com/cline/cline), an AI coding agent, following a spec-driven workflow. Each phase was written as a detailed specification (see the [`specs/`](specs/) folder) before any code was produced. Cline worked through those specs sequentially, with different language models applied at different stages — heavier reasoning models for architecture and tricky C++/nanobind problems, faster models for boilerplate and test generation.
 
-Cross-session knowledge management was handled through [Obsidian](https://obsidian.md) paired with the MCPVault MCP server, which gives the agent direct read and write access to vault notes. This workflow is described in [this blog post](https://blog.stokoe.net/obsidian-mcpvault/). A `memory-bank/` directory inside the repository captures session-to-session context — architecture decisions, active work focus, and known issues — in a form Cline re-reads at the start of every new session.
+Cross-session knowledge management was handled through [Obsidian](https://obsidian.md) paired with the [MCPVault](https://mcpvault.org/) MCP server, which gives the agent direct read and write access to vault notes. This workflow is described in [this blog post](https://blog.stokoe.net/obsidian-mcpvault/). A `memory-bank/` directory inside the repository captures session-to-session context — architecture decisions, active work focus, and known issues — in a form Cline re-reads at the start of every new session.
 
 ## Contact
 
