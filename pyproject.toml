@@ -70,24 +70,67 @@ build              = "uv pip install -e . --no-build-isolation"
 test               = "pytest tests/ -v"
 
 [tool.cibuildwheel]
-# Stable ABI: one cp312 wheel runs on Python 3.12+
+# Stable ABI: one cp312-abi3 wheel runs on Python 3.12+
 build = "cp312-manylinux_x86_64"
 
 [tool.cibuildwheel.linux]
-manylinux-x86_64-image = "quay.io/pypa/manylinux_2_39_x86_64"
-# Install Qrack pre-built binary inside the container before CMake runs.
+# manylinux_2_34 (AlmaLinux 9, glibc 2.34) is the highest standard PyPA image
+# available for x86_64 locally. We download the pre-built Qrack archive rather
+# than building from source to avoid a lengthy (and OOM-prone) C++ compile.
+# auditwheel will detect the real glibc requirements from the bundled libqrack.so
+# and tag the wheel accordingly (may land on manylinux_2_39 or similar).
+manylinux-x86_64-image = "manylinux_2_34"
+
+# Build Qrack v10.7.0 from source inside the manylinux_2_34 container.
+#
+# WHY NOT THE PRE-BUILT ARCHIVE?
+# The release archive (libqrack-manylinux_2_39_x86_64.zip) was compiled on
+# a glibc 2.39 system. It references __isoc23_strtol — an unversioned glibc
+# symbol that first appeared in glibc 2.38. auditwheel does not detect
+# unversioned symbol requirements, so the wheel gets mislabelled manylinux_2_34
+# but fails at import time on any system with glibc < 2.38.
+#
+# Building from source inside this manylinux_2_34 container ensures every
+# symbol used by libqrack.a comes from glibc 2.34, producing a wheel that
+# truly runs on manylinux_2_34+ (AlmaLinux 9, Ubuntu 22.04+, etc.)
+#
+# -j2 limits peak memory pressure during heavy C++ template compilation.
+# Expect this step to take roughly 10–20 minutes.
 before-all = """
+set -e
+# xxd (in vim-common) is required by Qrack's cmake to embed .cl kernels as headers.
+dnf install -y cmake git ninja-build ocl-icd-devel vim-common
+
+# AlmaLinux 9's opencl-headers package omits CL/opencl.hpp (the C++ bindings).
+# Download it from the Khronos OpenCL-CLHPP repository.
 curl -fsSL \
-  https://github.com/unitaryfoundation/qrack/releases/download/vm6502q.v10.7.0/libqrack-manylinux_2_39_x86_64.zip \
-  -o /tmp/libqrack.zip && \
-unzip -q /tmp/libqrack.zip -d /tmp/qrack && \
-cp -r /tmp/qrack/include/* /usr/local/include/ && \
-cp -r /tmp/qrack/lib/*     /usr/local/lib/ && \
+    https://raw.githubusercontent.com/KhronosGroup/OpenCL-CLHPP/v2.0.16/include/CL/opencl.hpp \
+    -o /usr/include/CL/opencl.hpp
+
+# Clone and build Qrack at the same tag as the release archive.
+git clone --depth 1 --branch vm6502q.v10.7.0 \
+    https://github.com/unitaryfoundation/qrack.git /tmp/qrack_src
+
+cmake -B /tmp/qrack_build -S /tmp/qrack_src -G Ninja \\
+      -DCMAKE_BUILD_TYPE=Release \\
+      -DENABLE_OPENCL=ON \\
+      -DENABLE_CUDA=OFF \\
+      -DBUILD_SHARED_LIBS=OFF \\
+      -DCMAKE_INSTALL_PREFIX=/usr/local
+
+cmake --build /tmp/qrack_build --parallel 2
+cmake --install /tmp/qrack_build
 ldconfig
 """
+
+# libqrack is static — no shared library to bundle.
+# Exclude libOpenCL.so.1 (ICD loader): must be provided by the user's distro
+# at runtime; bundling it would break GPU driver discovery on the user's system.
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} --exclude libOpenCL.so.1"
+
+# After a cmake install to /usr/local the library lands at /usr/local/lib.
 environment = { QRACK_LIB_DIR = "/usr/local/lib", QRACK_INCLUDE_DIR = "/usr/local/include/qrack" }
-test-command = """python -c "from qrackbind import QrackSimulator; s = QrackSimulator(qubitCount=1); s.h(0); print('smoke test OK')"\
-"""
+test-command = """python -c "from qrackbind import QrackSimulator; s = QrackSimulator(qubitCount=1); s.h(0); print('smoke test OK')\""""
 
 [build-system]
 requires = ["scikit-build-core>=0.12", "nanobind>=2.8.0"]

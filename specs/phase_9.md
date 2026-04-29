@@ -37,7 +37,7 @@ pip install qrackbind
 
 That is the complete installation for an end user. The wheel on PyPI is a pre-built binary that includes the Qrack library. No system Qrack installation is required.
 
-The wheel is built by the GitHub Actions CI pipeline using cibuildwheel. During the wheel build, CMake's `FetchContent` downloads the appropriate pre-built Qrack archive from the Qrack GitHub releases page, compiles the nanobind extension against it, and `auditwheel repair` bundles any remaining shared library dependencies into the wheel. By the time the `.whl` file is published to PyPI, the Qrack library is already inside it.
+The wheel is built by the GitHub Actions CI pipeline using cibuildwheel inside a `manylinux_2_34` container. During the wheel build, the `before-all` script installs OpenCL build dependencies and compiles Qrack from source with `-DENABLE_OPENCL=ON`. The nanobind extension is compiled against this freshly-built Qrack, then `auditwheel repair` bundles `libqrack.so` into the wheel while explicitly excluding `libOpenCL.so.1` (the ICD loader is provided by the user's distro at runtime — see the OpenCL section below). By the time the `.whl` file is published to PyPI, the Qrack library is inside it; only the OpenCL ICD loader is a runtime system dependency.
 
 ---
 
@@ -189,10 +189,39 @@ skip  = "*-win32 *-manylinux_i686 *-musllinux*"
 build-frontend = "build"
 
 [tool.cibuildwheel.linux]
-# FetchContent handles Qrack download during the CMake build step.
-# Only OpenCL headers are needed at build time on the runner.
-before-all = "apt-get update && apt-get install -y ocl-icd-opencl-dev opencl-headers"
-manylinux-x86_64-image = "manylinux_2_28"
+# manylinux_2_34 (AlmaLinux 9, glibc 2.34) is the highest standard PyPA image.
+# Qrack's pre-built archives on the releases page (manylinux_2_35 / manylinux_2_39)
+# are too new to use here without a custom base image — so Qrack is built from
+# source inside the container, producing a libqrack.so that matches the
+# container's glibc and lets the wheel claim manylinux_2_34 honestly.
+# Resulting wheel runs on Ubuntu 22.04+, RHEL 9+, Fedora 36+, Debian 12+.
+manylinux-x86_64-image = "manylinux_2_34"
+
+# Build-time deps + Qrack source build with OpenCL enabled.
+# ocl-icd-devel provides libOpenCL.so.1 as a link-time stub. The actual
+# ICD loader is provided by the user's distro at runtime — we do NOT
+# bundle it (see repair-wheel-command below).
+before-all = """
+    dnf install -y cmake gcc-c++ git ocl-icd-devel opencl-headers
+    git clone --depth=1 --branch vm6502q.v10.7.0 \\
+        https://github.com/unitaryfoundation/qrack.git /tmp/qrack
+    cmake -S /tmp/qrack -B /tmp/qrack/build \\
+        -DCMAKE_BUILD_TYPE=Release \\
+        -DCMAKE_INSTALL_PREFIX=/usr/local \\
+        -DENABLE_OPENCL=ON \\
+        -DBUILD_SHARED_LIBS=ON
+    cmake --build /tmp/qrack/build --parallel
+    cmake --install /tmp/qrack/build
+    ldconfig
+"""
+
+# Exclude the OpenCL ICD loader from auditwheel bundling.
+# Bundling it would pin the wheel to whatever vendor was present in the
+# build container and break on every other user's machine. Users supply
+# libOpenCL.so.1 via ocl-icd-libopencl1 (Debian/Ubuntu) or ocl-icd (Fedora/RHEL).
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} --exclude libOpenCL.so.1"
+
+environment = { QRACK_INCLUDE_DIR="/usr/local/include", QRACK_LIB_DIR="/usr/local/lib64" }
 ```
 
 **Release workflow:**
@@ -206,9 +235,43 @@ git push origin v0.1.0
 
 ---
 
+## OpenCL — Build-Time vs Runtime
+
+OpenCL on Linux uses a two-layer architecture that the wheel has to respect to be portable.
+
+**The ICD loader (`libOpenCL.so.1`)** is a thin shim shipped by the user's distribution (`ocl-icd-libopencl1` on Debian/Ubuntu, `ocl-icd` on Fedora/RHEL). It does no GPU work itself — it dlopens vendor driver libraries listed under `/etc/OpenCL/vendors/*.icd` at runtime.
+
+**The vendor driver** is the actual OpenCL implementation: NVIDIA's proprietary driver, AMD's `rocm-opencl-runtime`, Intel's `intel-opencl-icd`, `pocl` for CPU-only, or the WSL2 d3d12 stub at `/usr/lib/wsl/lib/libOpenCL.so.1`.
+
+The wheel must link **against** the loader at build time but must **not bundle** it. Bundling pins the wheel to whichever ICD loader was present in the build container, which then conflicts with the user's real loader and breaks vendor driver discovery. This is the same pattern `pyqrack` uses today and the same pattern `torch` uses for CUDA.
+
+The cibuildwheel config above implements this:
+
+- `dnf install ocl-icd-devel opencl-headers` provides `libOpenCL.so.1` as a link-time stub inside the container.
+- Qrack is built with `-DENABLE_OPENCL=ON` so the OpenCL code paths are compiled in.
+- `auditwheel repair --exclude libOpenCL.so.1` keeps the loader as an unresolved external in the final wheel — the linker records a dependency on `libOpenCL.so.1` but the file is not copied into the wheel.
+
+**End-user runtime requirement.** The README installation section needs a note like:
+
+> qrackbind requires an OpenCL ICD loader at runtime. On Debian/Ubuntu: `apt install ocl-icd-libopencl1`. On Fedora/RHEL: `dnf install ocl-icd`. For GPU acceleration also install a vendor driver: NVIDIA's proprietary driver (CUDA toolkit installs the OpenCL ICD), `rocm-opencl-runtime` (AMD), `intel-opencl-icd` (Intel), or `pocl-opencl-icd` (CPU fallback). On WSL2 with an NVIDIA GPU the Windows host driver provides the ICD via `/usr/lib/wsl/lib/libOpenCL.so.1` automatically — see [[OpenCL on WSL2 with NVIDIA GPU]].
+>
+> If `import qrackbind` fails with `libOpenCL.so.1: cannot open shared object file`, the loader is missing.
+
+**Build-runner GPU not required.** GitHub Actions runners have no GPU, but the build only needs the link-time stub. Real driver discovery happens at the user's runtime. CI does not need to be a GPU runner.
+
+**Optional fail-fast.** Qrack's `qrack_cl_precompile` binary, which ships in the source tree's bin output, can be invoked from a `qrackbind-precompile` console-script entry point to force OpenCL kernel compilation up front. This converts a confusing JIT-time failure on first simulator construction into a clear early error if no ICD or vendor driver is configured. Cheap to add later if support burden warrants it.
+
+---
+
 ## CMake FetchContent — How the Auto-Download Works
 
-`cmake/FetchQrack.cmake` is included by `CMakeLists.txt` when `find_library` does not locate Qrack on the system. This is the mechanism that makes both `pip install qrackbind` (for end users) and `just build` on a clean developer machine work without a prior manual Qrack install.
+`cmake/FetchQrack.cmake` is included by `CMakeLists.txt` when `find_library` does not locate Qrack on the system. This is the developer-machine fallback that makes `just build` work on a clean clone without a prior manual Qrack install.
+
+> [!note] Not used in the CI wheel build
+> The CI pipeline builds Qrack from source inside `before-all` (see cibuildwheel section above) rather than using FetchContent, because the pre-built archives on the Qrack releases page require glibc 2.35+ which is newer than the `manylinux_2_34` build container. FetchContent is purely for developer convenience.
+
+> [!warning] Developer-side glibc compatibility
+> FetchContent downloads `libqrack-manylinux_2_35_x86_64.zip` by default, which requires glibc 2.35. Developers on systems with glibc < 2.35 will hit a runtime error and need to fall back to `bash scripts/install_qrack.sh --cpu` or `--cuda` to build Qrack from source. `cmake/FetchQrack.cmake` should detect glibc and emit an actionable error message when the prebuilt archive would not run.
 
 ```cmake
 # CMakeLists.txt — Qrack discovery with auto-download fallback
@@ -349,9 +412,10 @@ Running `just info` before filing any build issue provides the full picture of w
 
 ```
 □ cmake/FetchQrack.cmake downloads correct archive for Linux x86_64
+□ cmake/FetchQrack.cmake detects glibc < 2.35 and emits actionable error
 □ cmake/FetchQrack.cmake downloads correct archive for macOS ARM64
 □ cmake/FetchQrack.cmake gives actionable error for unsupported platforms
-□ pip install qrackbind succeeds on a clean Linux x86_64 machine
+□ pip install qrackbind succeeds on a clean Linux x86_64 machine (Ubuntu 22.04+, RHEL 9+, Fedora 36+)
 □ pip install qrackbind succeeds on a clean macOS ARM64 machine
 □ System Qrack install (PPA) takes precedence over FetchContent download
 □ QRACK_LIB_DIR env var overrides both system and FetchContent paths
@@ -364,10 +428,17 @@ Running `just info` before filing any build issue provides the full picture of w
 □ uv run test passes after uv run build
 □ justfile build target works for developers who have just installed
 □ GitHub Actions wheels.yml triggers on version tags
-□ Wheel builds succeed in cibuildwheel manylinux_2_28 container
+□ Wheel builds succeed in cibuildwheel manylinux_2_34 container
+□ Qrack source build in before-all completes with ENABLE_OPENCL=ON
+□ auditwheel repair --exclude libOpenCL.so.1 produces a manylinux_2_34 wheel
+□ Built wheel imports successfully on a system with ocl-icd-libopencl1 installed
+□ Built wheel emits clear error on a system without libOpenCL.so.1
+□ Built wheel discovers NVIDIA OpenCL on a host with the proprietary driver
+□ Built wheel discovers WSL2 d3d12 OpenCL stub on Windows + WSL2 + NVIDIA
 □ PyPI trusted publishing configured (no API key stored in repo)
 □ pip install qrackbind from PyPI — python -c "from qrackbind import QrackSimulator; print(sim)" works
 □ Wheel is self-contained — no system Qrack required at runtime
+□ README documents OpenCL ICD runtime requirement per distro
 □ pyproject.toml cmake.define defaults documented
 □ README installation section matches actual user experience
 ```

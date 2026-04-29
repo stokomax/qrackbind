@@ -70,11 +70,8 @@ install:
 build:
     uv build --no-build-isolation
 
-# NOTE: each variant pins its own build-dir under build/ so that switching
-# between configurations (default ↔ cpu ↔ cuda ↔ debug ↔ ...) does not
-# reuse stale CMake cache fragments from a prior configuration. Without
-# this, CMake's compiler-check try_compile gets wired to the wrong
-# generator and fails with "ninja: error: Makefile:5: expected '='".
+# NOTE: build-debug pins its own build-dir so switching between
+# Release and Debug does not reuse stale CMake cache fragments.
 
 build-debug:
     uv pip install . --no-build-isolation \
@@ -86,31 +83,6 @@ build-verbose:
         --config-settings "build-dir=build/{wheel_tag}-verbose" \
         --config-settings "build.verbose=true" \
         --config-settings "logging.level=DEBUG"
-
-# CPU only build (no OpenCL / GPU acceleration)
-build-cpu:
-    uv pip install . --no-build-isolation \
-        --config-settings "build-dir=build/{wheel_tag}-cpu" \
-        --config-settings "cmake.define.ENABLE_OPENCL=OFF"
-
-# CUDA GPU build (NVIDIA)
-build-cuda:
-    uv pip install . --no-build-isolation \
-        --config-settings "build-dir=build/{wheel_tag}-cuda" \
-        --config-settings "cmake.define.ENABLE_CUDA=ON"
-
-# Double precision floating point mode
-build-double:
-    uv pip install . --no-build-isolation \
-        --config-settings "build-dir=build/{wheel_tag}-double" \
-        --config-settings "cmake.define.FPPOW=6"
-
-# Disable CPU SIMD instructions for compatibility
-build-no-simd:
-    uv pip install . --no-build-isolation \
-        --config-settings "build-dir=build/{wheel_tag}-nosimd" \
-        --config-settings "cmake.define.ENABLE_SSE3=OFF" \
-        --config-settings "cmake.define.ENABLE_AVX=OFF"
 
 build-define define:
     uv pip install . --no-build-isolation \
@@ -151,6 +123,26 @@ lint:
 
 typecheck:
     uv run pyright .
+
+# Build wheel locally using cibuildwheel (manylinux_2_34, OpenCL enabled).
+# Requires Docker. Output lands in ./wheelhouse/.
+# This is the spec-compliant build — matches what CI publishes to PyPI.
+cibuild:
+    python -m cibuildwheel --platform linux
+
+# CPU-only local wheel (manylinux_2_34, no OpenCL dependency).
+# Faster than 'cibuild' — skips ocl-icd-devel and sets ENABLE_OPENCL=OFF.
+# Useful for smoke-testing the packaging pipeline without GPU infrastructure.
+cibuild-cpu:
+    CIBW_BEFORE_ALL="dnf install -y cmake gcc-c++ git make && \
+      git clone --depth=1 --branch vm6502q.v10.7.0 \
+        https://github.com/unitaryfoundation/qrack.git /tmp/qrack_src && \
+      cmake -S /tmp/qrack_src -B /tmp/qrack_build \
+        -DCMAKE_BUILD_TYPE=Release -DENABLE_OPENCL=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr/local && \
+      cmake --build /tmp/qrack_build --parallel \$(nproc) && \
+      cmake --install /tmp/qrack_build" \
+    python -m cibuildwheel --platform linux
 
 publish: wheel
     uv publish

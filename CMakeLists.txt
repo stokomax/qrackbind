@@ -53,16 +53,12 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind CONFIG REQUIRED)
 
-# --- Qrack Build Options ---
-option(ENABLE_OPENCL "Enable OpenCL GPU acceleration" ON)
-option(ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
-option(ENABLE_SSE3 "Enable SSE3 CPU instructions" ON)
-option(ENABLE_AVX "Enable AVX CPU instructions" ON)
-option(FPPOW "Floating point precision exponent (5=single, 6=double)" 5)
-
 # --- Qrack ---
 find_library(QRACK_LIB qrack
-    HINTS $ENV{QRACK_LIB_DIR} /usr/local/lib/qrack /usr/lib/qrack)
+    HINTS $ENV{QRACK_LIB_DIR}
+          /usr/local/lib/qrack /usr/lib/qrack
+          /usr/local/lib /usr/local/lib64
+          /usr/lib /usr/lib64)
 find_path(QRACK_INCLUDE qfactory.hpp
     HINTS $ENV{QRACK_INCLUDE_DIR}
           /usr/local/include/qrack
@@ -70,7 +66,7 @@ find_path(QRACK_INCLUDE qfactory.hpp
 
 if(NOT QRACK_LIB OR NOT QRACK_INCLUDE)
     message(STATUS "Qrack not found on system — fetching pre-built binary...")
-    include(cmake/FetchQrack)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchQrack)
 endif()
 
 message(STATUS "Qrack lib:     ${QRACK_LIB}")
