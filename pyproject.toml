@@ -1,15 +1,30 @@
 [project]
 name = "qrackbind"
 version = "0.1.0"
-description = "Add your description here"
+description = "nanobind Python bindings for the Qrack quantum simulator"
 readme = "README.md"
+license = { text = "MIT" }
 authors = [
     { name = "Martin Stokoe", email = "martin@stokoe.net" }
+]
+keywords = ["quantum", "simulator", "qrack", "pennylane", "nanobind"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=1.26",
 ]
+
+[project.urls]
+Homepage   = "https://github.com/stokomax/qrackbind"
+Repository = "https://github.com/stokomax/qrackbind"
+"Bug Tracker" = "https://github.com/stokomax/qrackbind/issues"
 
 [project.optional-dependencies]
 pennylane = [
@@ -37,8 +52,42 @@ dev = [
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
 
+[tool.scikit-build.cmake.define]
+# Defaults forwarded to CMake at build time.
+# Override on the command line with:
+#   uv pip install . --config-settings "cmake.define.ENABLE_OPENCL=OFF"
+ENABLE_OPENCL = "ON"
+ENABLE_CUDA   = "OFF"
+
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.{h,c,hpp,cpp}" }, { file = "bindings/**/*.{h,c,hpp,cpp}" }, { file = "CMakeLists.txt" }]
+
+[tool.uv.scripts]
+install-qrack      = "python scripts/install_qrack.py"
+install-qrack-cpu  = "python scripts/install_qrack.py --cpu"
+install-qrack-cuda = "python scripts/install_qrack.py --cuda"
+build              = "uv pip install -e . --no-build-isolation"
+test               = "pytest tests/ -v"
+
+[tool.cibuildwheel]
+# Stable ABI: one cp312 wheel runs on Python 3.12+
+build = "cp312-manylinux_x86_64"
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "manylinux_2_35"
+# Install Qrack pre-built binary inside the container before CMake runs.
+before-all = """
+curl -fsSL \
+  https://github.com/unitaryfoundation/qrack/releases/download/vm6502q.v10.7.0/libqrack-manylinux_2_35_x86_64.zip \
+  -o /tmp/libqrack.zip && \
+unzip -q /tmp/libqrack.zip -d /tmp/qrack && \
+cp -r /tmp/qrack/include/* /usr/local/include/ && \
+cp -r /tmp/qrack/lib/*     /usr/local/lib/ && \
+ldconfig
+"""
+environment = { QRACK_LIB_DIR = "/usr/local/lib", QRACK_INCLUDE_DIR = "/usr/local/include/qrack" }
+test-command = """python -c "from qrackbind import QrackSimulator; s = QrackSimulator(qubitCount=1); s.h(0); print('smoke test OK')"\
+"""
 
 [build-system]
 requires = ["scikit-build-core>=0.12", "nanobind>=2.8.0"]

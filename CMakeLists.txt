@@ -68,11 +68,9 @@ find_path(QRACK_INCLUDE qfactory.hpp
           /usr/local/include/qrack
           /usr/include/qrack)
 
-if(NOT QRACK_LIB)
-    message(FATAL_ERROR "Qrack library not found. Set QRACK_LIB_DIR env var.")
-endif()
-if(NOT QRACK_INCLUDE)
-    message(FATAL_ERROR "Qrack headers not found. Set QRACK_INCLUDE_DIR env var.")
+if(NOT QRACK_LIB OR NOT QRACK_INCLUDE)
+    message(STATUS "Qrack not found on system — fetching pre-built binary...")
+    include(cmake/FetchQrack)
 endif()
 
 message(STATUS "Qrack lib:     ${QRACK_LIB}")

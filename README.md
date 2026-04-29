@@ -150,7 +150,68 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 
 ## Installation
 
-Coming soon...
+### End users
+
+```bash
+pip install qrackbind
+```
+
+That's it. The wheel on PyPI includes a pre-built Qrack library — no compiler, CMake, or system Qrack installation is needed.
+
+### Developers (building from source)
+
+**Prerequisites:** `uv`, a C++17 compiler, and CMake.
+
+```bash
+git clone https://github.com/stokomax/qrackbind
+cd qrackbind
+uv sync --dev                       # create venv and install Python dependencies
+bash scripts/install_qrack.sh       # install the Qrack C++ library
+```
+
+`install_qrack.sh` accepts the following flags:
+
+| Flag | Effect |
+|---|---|
+| *(none)* | auto-detect: Ubuntu PPA if available, otherwise CPU-only source build |
+| `--ppa` | Ubuntu PPA — simplest on Ubuntu 22.04+ |
+| `--cpu` | build from source, no OpenCL |
+| `--cuda` | build from source with CUDA support |
+| `--version TAG` | override Qrack version (default: `vm6502q.v10.7.0`) |
+
+**Build and test:**
+
+```bash
+just build    # compile the nanobind extension
+just test     # run the test suite
+
+# or without just:
+uv run build
+uv run test
+```
+
+**Variant builds** (pass custom CMake flags through scikit-build-core):
+
+```bash
+just build-cpu      # CPU only, no OpenCL
+just build-cuda     # CUDA GPU
+just build-double   # double-precision float
+just build-debug    # debug symbols
+just build-no-simd  # disable SSE3/AVX (for compatibility testing)
+```
+
+Or via `uv` directly:
+
+```bash
+uv pip install -e . --no-build-isolation \
+    --config-settings "cmake.define.ENABLE_OPENCL=OFF"
+```
+
+**Diagnostics:**
+
+```bash
+just info   # print Qrack library location, OpenCL/CUDA/uint128 flags, and ldconfig status
+```
 
 ## Quick Start
 

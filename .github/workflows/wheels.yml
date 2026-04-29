@@ -1,0 +1,75 @@
+name: Build and publish wheels
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build_wheels:
+    name: Build wheels (Linux x86_64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.21.3
+        env:
+          # Stable ABI means one wheel covers Python 3.12+ — build cp312 only.
+          CIBW_BUILD: "cp312-manylinux_x86_64"
+          # manylinux_2_35 matches the glibc version of the Qrack pre-built archive.
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_35"
+          # Download and install the Qrack pre-built binary inside the container
+          # before CMake runs. The FetchQrack.cmake fallback would also handle this,
+          # but doing it in before-all is faster (single download per build job).
+          CIBW_BEFORE_ALL: >
+            curl -fsSL
+            https://github.com/unitaryfoundation/qrack/releases/download/vm6502q.v10.7.0/libqrack-manylinux_2_35_x86_64.zip
+            -o /tmp/libqrack.zip &&
+            unzip -q /tmp/libqrack.zip -d /tmp/qrack &&
+            cp -r /tmp/qrack/include/* /usr/local/include/ &&
+            cp -r /tmp/qrack/lib/*     /usr/local/lib/ &&
+            ldconfig
+          CIBW_ENVIRONMENT: >
+            QRACK_LIB_DIR=/usr/local/lib
+            QRACK_INCLUDE_DIR=/usr/local/include/qrack
+          # Run a quick smoke-test after each wheel is built.
+          CIBW_TEST_COMMAND: >
+            python -c "from qrackbind import QrackSimulator;
+            s = QrackSimulator(qubitCount=1); s.h(0); print('smoke test OK')"
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: ./wheelhouse/*.whl
+
+  # ── Publish ──────────────────────────────────────────────────────────────────
+  # TODO: change environment from 'testpypi' to 'pypi' and update repository-url
+  #       when you are ready to publish to production PyPI.
+  #
+  # Setup required on TestPyPI (https://test.pypi.org):
+  #   1. Create a project named 'qrackbind'
+  #   2. Add a Trusted Publisher: GitHub Actions, repo stokomax/qrackbind,
+  #      workflow wheels.yml, environment testpypi
+  publish:
+    name: Publish to TestPyPI
+    needs: build_wheels
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: testpypi
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
