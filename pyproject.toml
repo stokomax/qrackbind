@@ -1,6 +1,6 @@
 [project]
 name = "qrackbind"
-version = "0.1.0"
+version = "0.2.0"
 description = "nanobind Python bindings for the Qrack quantum simulator"
 readme = "README.md"
 license = { text = "MIT" }
@@ -40,7 +40,8 @@ dev = [
     "ruff>=0.14.5",
     "twine>=6.2.0",
     "pyright>=1.1",
-    "scikit-build-core>=0.12"
+    "scikit-build-core>=0.12",
+    "wheel>=0.47",
 ]
 
 [project.entry-points."pennylane.plugins"]
@@ -51,6 +52,7 @@ dev = [
 [tool.scikit-build]
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
+wheel.py-api = "cp312"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.{h,c,hpp,cpp}" }, { file = "bindings/**/*.{h,c,hpp,cpp}" }, { file = "CMakeLists.txt" }]
@@ -132,5 +134,6 @@ dev = [
     "ruff>=0.14.5",
     "twine>=6.2.0",
     "pyright>=1.1",
-    "scikit-build-core>=0.12"
+    "scikit-build-core>=0.12",
+    "wheel>=0.47",
 ]

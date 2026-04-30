@@ -69,6 +69,17 @@ install:
 # Compile C++, create Python wheel and run nanobind stubgen
 build:
     uv build --no-build-isolation
+    just retag
+
+# Append cp313-abi3 and cp314-abi3 tags so that resolvers which do not
+# fully honour the PEP 425 abi3 compatibility chain (e.g. uv on Python
+# 3.14) still recognise the wheel as compatible across 3.12–3.14.
+retag *args="":
+    @for w in dist/{{package}}*.whl wheelhouse/{{package}}*.whl; do \
+        [ -f "$w" ] || continue; \
+        echo "retagging $w"; \
+        uv run python -m wheel tags --python-tag '+cp313.cp314' --remove "$w"; \
+    done
 
 # NOTE: build-debug pins its own build-dir so switching between
 # Release and Debug does not reuse stale CMake cache fragments.
@@ -129,6 +140,7 @@ typecheck:
 # This is the spec-compliant build — matches what CI publishes to PyPI.
 cibuild:
     python -m cibuildwheel --platform linux
+    just retag
 
 # CPU-only local wheel (manylinux_2_34, no OpenCL dependency).
 # Faster than 'cibuild' — skips ocl-icd-devel and sets ENABLE_OPENCL=OFF.
@@ -143,6 +155,7 @@ cibuild-cpu:
       cmake --build /tmp/qrack_build --parallel \$(nproc) && \
       cmake --install /tmp/qrack_build" \
     python -m cibuildwheel --platform linux
+    just retag
 
 # Publish to TestPyPI (uses ~/.pypirc [testpypi] credentials).
 # Uses 'uvx' so twine runs in an isolated env without triggering a project build.

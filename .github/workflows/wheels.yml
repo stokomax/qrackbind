@@ -44,6 +44,14 @@ jobs:
             python -c "from qrackbind import QrackSimulator;
             s = QrackSimulator(qubitCount=1); s.h(0); print('smoke test OK')"
 
+      - name: Retag wheel for multi-version abi3 compatibility
+        run: |
+          python3 -m pip install wheel
+          for w in wheelhouse/*.whl; do
+            echo "retagging $w"
+            python3 -m wheel tags --python-tag '+cp313.cp314' --remove "$w"
+          done
+
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
         with:

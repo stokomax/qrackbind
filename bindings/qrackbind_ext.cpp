@@ -8,7 +8,7 @@ void bind_stabilizer(nb::module_& m);   // Phase 10: QrackStabilizer + QrackStab
 // Module name must exactly match the CMakeLists.txt target name: _core
 NB_MODULE(_core, m) {
     m.doc() = "qrackbind — nanobind bindings for the Qrack quantum simulator";
-    m.attr("__version__") = "0.1.0";
+    m.attr("__version__") = "0.2.0";
 
     // bind_exceptions MUST be called first. nanobind processes
     // exception translators in LIFO order — the most recently registered
