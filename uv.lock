@@ -680,7 +680,7 @@ wheels = [
 
 [[package]]
 name = "qrackbind"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -698,6 +698,7 @@ dev = [
     { name = "ruff" },
     { name = "scikit-build-core" },
     { name = "twine" },
+    { name = "wheel" },
 ]
 pennylane = [
     { name = "pennylane" },
@@ -714,6 +715,7 @@ dev = [
     { name = "ruff" },
     { name = "scikit-build-core" },
     { name = "twine" },
+    { name = "wheel" },
 ]
 
 [package.metadata]
@@ -730,6 +732,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14.5" },
     { name = "scikit-build-core", marker = "extra == 'dev'", specifier = ">=0.12" },
     { name = "twine", marker = "extra == 'dev'", specifier = ">=6.2.0" },
+    { name = "wheel", marker = "extra == 'dev'", specifier = ">=0.47" },
 ]
 provides-extras = ["pennylane", "dev"]
 
@@ -744,6 +747,7 @@ dev = [
     { name = "ruff", specifier = ">=0.14.5" },
     { name = "scikit-build-core", specifier = ">=0.12" },
     { name = "twine", specifier = ">=6.2.0" },
+    { name = "wheel", specifier = ">=0.47" },
 ]
 
 [[package]]

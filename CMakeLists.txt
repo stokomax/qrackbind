@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15...3.26)
+cmake_minimum_required(VERSION 3.18...3.26)
 project(${SKBUILD_PROJECT_NAME} LANGUAGES CXX)
 
 # Optional compilation options
@@ -27,15 +27,15 @@ if (NOT SKBUILD)
   after editing C++ files.")
 endif()
 
-# Per nanobind docs.
-if (CMAKE_VERSION VERSION_LESS 3.18)
-  set(DEV_MODULE Development)
-else()
-  set(DEV_MODULE Development.Module)
-endif()
-
-# Try to import all Python components potentially needed by nanobind
-find_package(Python 3.12 COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
+# Per nanobind docs — Development.Module and Development.SABIModule
+# both require CMake >= 3.18. SABIModule provides the Python::SABIModule
+# target that nanobind's STABLE_ABI guard checks for; without it, the flag
+# is silently ignored and the extension compiles against full (non-abi3)
+# headers, producing a version-tagged .so that only works on the build
+# host's Python version.
+find_package(Python 3.12
+  COMPONENTS Interpreter Development.Module Development.SABIModule
+  REQUIRED)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

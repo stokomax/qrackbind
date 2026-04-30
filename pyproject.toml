@@ -1,13 +1,13 @@
 [project]
 name = "qrackbind"
-version = "0.1.0"
+version = "0.2.0"
 description = "nanobind Python bindings for the Qrack quantum simulator"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "Martin Stokoe", email = "martin@stokoe.net" }
 ]
-keywords = ["quantum", "simulator", "qrack", "pennylane", "nanobind"]
+keywords = ["quantum", "simulator", "qrack", "nanobind"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -27,30 +27,24 @@ Repository = "https://github.com/stokomax/qrackbind"
 "Bug Tracker" = "https://github.com/stokomax/qrackbind/issues"
 
 [project.optional-dependencies]
-pennylane = [
-    "pennylane>=0.43",
-]
 dev = [
     "auditwheel>=6.4.2",
     "nanobind>=2.8.0",
     "nanobind-stubgen>=0.1.0",
-    "pennylane>=0.43",
     "pytest>=8.4.2",
     "pytest-cpp>=2.6.0",
     "ruff>=0.14.5",
     "twine>=6.2.0",
     "pyright>=1.1",
-    "scikit-build-core>=0.12"
+    "scikit-build-core>=0.12",
+    "wheel>=0.47",
 ]
 
-[project.entry-points."pennylane.plugins"]
-"qrackbind.simulator"        = "qrackbind.pennylane.device:QrackDevice"
-"qrackbind.stabilizer"       = "qrackbind.pennylane.stabilizer_device:QrackStabilizerDevice"
-"qrackbind.stabilizer_hybrid" = "qrackbind.pennylane.stabilizer_device:QrackStabilizerHybridDevice"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
+wheel.py-api = "cp312"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.{h,c,hpp,cpp}" }, { file = "bindings/**/*.{h,c,hpp,cpp}" }, { file = "CMakeLists.txt" }]
@@ -104,7 +98,7 @@ cmake -B /tmp/qrack_build -S /tmp/qrack_src -G Ninja \\
       -DBUILD_SHARED_LIBS=OFF \\
       -DCMAKE_INSTALL_PREFIX=/usr/local
 
-cmake --build /tmp/qrack_build --parallel 2
+cmake --build /tmp/qrack_build --parallel $(nproc)
 cmake --install /tmp/qrack_build
 ldconfig
 """
@@ -132,5 +126,6 @@ dev = [
     "ruff>=0.14.5",
     "twine>=6.2.0",
     "pyright>=1.1",
-    "scikit-build-core>=0.12"
+    "scikit-build-core>=0.12",
+    "wheel>=0.47",
 ]
