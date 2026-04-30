@@ -17,15 +17,15 @@
 #include "common/pauli.hpp"
 #include "qcircuit.hpp"
 
-// Qrack defines bitLenInt / bitCapInt as preprocessor macros.  Undefining them
-// gives us C++ type aliases we can refer to without macro-expansion hazards.
-// The alias types MUST match whatever Qrack's #define expanded to — otherwise
-// vector<bitLenInt> (our alias) ≠ vector<unsigned char> (Qrack's API), and the
-// compiler rejects implicit conversion.  Qrack's default QBCAPPOW=5 expands
-// both macros to uint8_t / uint64_t respectively, so we match those here.
-#undef bitLenInt
+// bitLenInt is a preprocessor macro in Qrack's qrack_types.hpp (expands to
+// uint8_t, uint16_t, uint32_t, or uint64_t depending on QBCAPPOW). We leave it
+// as a macro so that every vector<bitLenInt> in our binding code expands to the
+// same concrete integer type as in Qrack's API — guaranteed to match regardless
+// of how the installed Qrack library was compiled.
+//
+// bitCapInt is a typedef (Qrack namespace); we declare the aliases below for
+// code that needs them outside of the Qrack namespace.
 #undef bitCapInt
-using bitLenInt = uint8_t;   // must match Qrack's #define bitLenInt (uint8_t when QBCAPPOW≤7)
 using bitCapInt = uint64_t;
 using real1_f   = float;
 

@@ -55,13 +55,6 @@ build-dir = "build/{wheel_tag}"
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.{h,c,hpp,cpp}" }, { file = "bindings/**/*.{h,c,hpp,cpp}" }, { file = "CMakeLists.txt" }]
 
-[tool.uv.scripts]
-install-qrack      = "python scripts/install_qrack.py"
-install-qrack-cpu  = "python scripts/install_qrack.py --cpu"
-install-qrack-cuda = "python scripts/install_qrack.py --cuda"
-build              = "uv pip install -e . --no-build-isolation"
-test               = "pytest tests/ -v"
-
 [tool.cibuildwheel]
 # Stable ABI: one cp312-abi3 wheel runs on Python 3.12+
 build = "cp312-manylinux_x86_64"

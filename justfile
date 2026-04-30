@@ -145,10 +145,11 @@ cibuild-cpu:
     python -m cibuildwheel --platform linux
 
 # Publish to TestPyPI (uses ~/.pypirc [testpypi] credentials).
+# Uses 'uvx' so twine runs in an isolated env without triggering a project build.
 # To publish to production PyPI when ready, run:
-#   twine upload --repository pypi wheelhouse/*.whl
-publish: wheel
-    twine upload --repository testpypi wheelhouse/*.whl
+#   uvx twine upload --repository pypi wheelhouse/*.whl
+publish:
+    uvx twine upload --repository testpypi wheelhouse/*.whl
 
 wheel:
     uv build --wheel --no-build-isolation
