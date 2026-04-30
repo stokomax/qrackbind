@@ -52,13 +52,6 @@ dev = [
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
 
-[tool.scikit-build.cmake.define]
-# Defaults forwarded to CMake at build time.
-# Override on the command line with:
-#   uv pip install . --config-settings "cmake.define.ENABLE_OPENCL=OFF"
-ENABLE_OPENCL = "ON"
-ENABLE_CUDA   = "OFF"
-
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.{h,c,hpp,cpp}" }, { file = "bindings/**/*.{h,c,hpp,cpp}" }, { file = "CMakeLists.txt" }]
 

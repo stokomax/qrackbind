@@ -144,8 +144,11 @@ cibuild-cpu:
       cmake --install /tmp/qrack_build" \
     python -m cibuildwheel --platform linux
 
+# Publish to TestPyPI (uses ~/.pypirc [testpypi] credentials).
+# To publish to production PyPI when ready, run:
+#   twine upload --repository pypi wheelhouse/*.whl
 publish: wheel
-    uv publish
+    twine upload --repository testpypi wheelhouse/*.whl
 
 wheel:
     uv build --wheel --no-build-isolation
