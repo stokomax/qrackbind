@@ -7,7 +7,7 @@ license = { text = "MIT" }
 authors = [
     { name = "Martin Stokoe", email = "martin@stokoe.net" }
 ]
-keywords = ["quantum", "simulator", "qrack", "pennylane", "nanobind"]
+keywords = ["quantum", "simulator", "qrack", "nanobind"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -27,14 +27,10 @@ Repository = "https://github.com/stokomax/qrackbind"
 "Bug Tracker" = "https://github.com/stokomax/qrackbind/issues"
 
 [project.optional-dependencies]
-pennylane = [
-    "pennylane>=0.43",
-]
 dev = [
     "auditwheel>=6.4.2",
     "nanobind>=2.8.0",
     "nanobind-stubgen>=0.1.0",
-    "pennylane>=0.43",
     "pytest>=8.4.2",
     "pytest-cpp>=2.6.0",
     "ruff>=0.14.5",
@@ -44,10 +40,6 @@ dev = [
     "wheel>=0.47",
 ]
 
-[project.entry-points."pennylane.plugins"]
-"qrackbind.simulator"        = "qrackbind.pennylane.device:QrackDevice"
-"qrackbind.stabilizer"       = "qrackbind.pennylane.stabilizer_device:QrackStabilizerDevice"
-"qrackbind.stabilizer_hybrid" = "qrackbind.pennylane.stabilizer_device:QrackStabilizerHybridDevice"
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
