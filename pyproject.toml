@@ -98,7 +98,7 @@ cmake -B /tmp/qrack_build -S /tmp/qrack_src -G Ninja \\
       -DBUILD_SHARED_LIBS=OFF \\
       -DCMAKE_INSTALL_PREFIX=/usr/local
 
-cmake --build /tmp/qrack_build --parallel 2
+cmake --build /tmp/qrack_build --parallel $(nproc)
 cmake --install /tmp/qrack_build
 ldconfig
 """

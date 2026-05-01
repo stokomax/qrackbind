@@ -138,7 +138,21 @@ typecheck:
 # Build wheel locally using cibuildwheel (manylinux_2_34, OpenCL enabled).
 # Requires Docker. Output lands in ./wheelhouse/.
 # This is the spec-compliant build — matches what CI publishes to PyPI.
-cibuild:
+# Optionally limit the Qrack C++ build to a specific core count, e.g. just cibuild 4
+cibuild cores=`nproc`:
+    CIBW_BEFORE_ALL="set -e && \
+      dnf install -y cmake git ninja-build ocl-icd-devel vim-common && \
+      curl -fsSL \
+        https://raw.githubusercontent.com/KhronosGroup/OpenCL-CLHPP/v2.0.16/include/CL/opencl.hpp \
+        -o /usr/include/CL/opencl.hpp && \
+      git clone --depth 1 --branch vm6502q.v10.7.0 \
+        https://github.com/unitaryfoundation/qrack.git /tmp/qrack_src && \
+      cmake -B /tmp/qrack_build -S /tmp/qrack_src -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release -DENABLE_OPENCL=ON -DENABLE_CUDA=OFF \
+        -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=/usr/local && \
+      cmake --build /tmp/qrack_build --parallel {{cores}} && \
+      cmake --install /tmp/qrack_build && \
+      ldconfig" \
     python -m cibuildwheel --platform linux
     just retag
 
