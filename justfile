@@ -145,17 +145,35 @@ cibuild:
 # CPU-only local wheel (manylinux_2_34, no OpenCL dependency).
 # Faster than 'cibuild' — skips ocl-icd-devel and sets ENABLE_OPENCL=OFF.
 # Useful for smoke-testing the packaging pipeline without GPU infrastructure.
-cibuild-cpu:
+cibuild-cpu cores=`nproc`:
     CIBW_BEFORE_ALL="dnf install -y cmake gcc-c++ git make && \
       git clone --depth=1 --branch vm6502q.v10.7.0 \
         https://github.com/unitaryfoundation/qrack.git /tmp/qrack_src && \
       cmake -S /tmp/qrack_src -B /tmp/qrack_build \
         -DCMAKE_BUILD_TYPE=Release -DENABLE_OPENCL=OFF \
         -DCMAKE_INSTALL_PREFIX=/usr/local && \
-      cmake --build /tmp/qrack_build --parallel \$(nproc) && \
+      cmake --build /tmp/qrack_build --parallel {{cores}} && \
       cmake --install /tmp/qrack_build" \
     python -m cibuildwheel --platform linux
     just retag
+
+# Smoke-test the abi3 wheel across multiple Python releases.
+# Step 1: build one CPU-only wheel via cibuild-cpu (Docker required).
+# Step 2: for each Python in 3.12 / 3.13 / 3.14, use uv to create an
+#          isolated environment with that interpreter (downloaded automatically
+#          if not present) and install the wheel into it, then run a quick
+#          import check — confirming the abi3 claim without re-building.
+smoke_test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just cibuild-cpu 6
+    wheel=$(ls wheelhouse/{{package}}*.whl | head -1)
+    echo "Wheel: $wheel"
+    for py in 3.12 3.13 3.14; do
+        echo "--- Python $py ---"
+        uv run --python "$py" --with "$wheel" --no-project \
+            python -c "from qrackbind import QrackSimulator; s = QrackSimulator(qubitCount=1); s.h(0); print('Python $py: smoke test OK')"
+    done
 
 # Publish to TestPyPI (uses ~/.pypirc [testpypi] credentials).
 # Uses 'uvx' so twine runs in an isolated env without triggering a project build.
