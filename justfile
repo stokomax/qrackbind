@@ -78,7 +78,7 @@ retag *args="":
     @for w in dist/{{package}}*.whl wheelhouse/{{package}}*.whl; do \
         [ -f "$w" ] || continue; \
         echo "retagging $w"; \
-        uv run python -m wheel tags --python-tag '+cp313.cp314' --remove "$w"; \
+        uvx --from wheel wheel tags --python-tag '+cp313.cp314' --remove "$w"; \
     done
 
 # NOTE: build-debug pins its own build-dir so switching between
