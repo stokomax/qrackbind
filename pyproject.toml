@@ -1,6 +1,6 @@
 [project]
 name = "qrackbind"
-version = "0.2.0"
+version = "0.2.2"
 description = "nanobind Python bindings for the Qrack quantum simulator"
 readme = "README.md"
 license = { text = "MIT" }
@@ -36,15 +36,21 @@ dev = [
     "ruff>=0.14.5",
     "twine>=6.2.0",
     "pyright>=1.1",
-    "scikit-build-core>=0.12",
-    "wheel>=0.47",
+    "scikit-build-core>=0.12"
 ]
 
 
 [tool.scikit-build]
 minimum-version = "build-system.requires"
-build-dir = "build/{wheel_tag}"
-wheel.py-api = "cp312"
+build-dir        = "build/{wheel_tag}"
+wheel.py-api     = "cp312"           # emit cp312-abi3-… tag (stable ABI, Python 3.12+)
+
+[tool.scikit-build.cmake.define]
+# Defaults forwarded to CMake at build time.
+# Override on the command line with:
+#   uv pip install . --config-settings "cmake.define.ENABLE_OPENCL=OFF"
+ENABLE_OPENCL = "ON"
+ENABLE_CUDA   = "OFF"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.{h,c,hpp,cpp}" }, { file = "bindings/**/*.{h,c,hpp,cpp}" }, { file = "CMakeLists.txt" }]
@@ -126,6 +132,5 @@ dev = [
     "ruff>=0.14.5",
     "twine>=6.2.0",
     "pyright>=1.1",
-    "scikit-build-core>=0.12",
-    "wheel>=0.47",
+    "scikit-build-core>=0.12"
 ]
