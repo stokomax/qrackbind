@@ -53,6 +53,9 @@ from ._core import (
     QrackArgumentError,
     QrackStabilizer,                                    # Phase 10: imported directly — no state access to wrap
     QrackStabilizerHybrid as _QrackStabilizerHybrid,   # Phase 10: wrapped below for state_vector property
+    NoisyBase,                                          # Phase 14
+    QrackNoisySimulator as _QrackNoisySimulator,        # Phase 14: wrapped below for state_vector property
+    QrackNoisyStabilizerHybrid as _QrackNoisyStabHybrid,  # Phase 14
 )
 
 
@@ -136,12 +139,68 @@ class QrackStabilizerHybrid(_QrackStabilizerHybrid):
         return self._probabilities_impl()
 
 
+class QrackNoisySimulator(_QrackNoisySimulator):
+    """
+    Quantum simulator with depolarizing noise injected around every gate.
+
+    IMPORTANT — density-matrix semantics:
+    Under noise the system is a mixed state. state_vector returns a single
+    trajectory sample, NOT the ensemble. Use sample_trajectories(shots) for
+    ensemble statistics. exp_val_* methods average correctly.
+    """
+
+    __slots__ = ()
+
+    @property
+    def state_vector(self) -> "np.ndarray":
+        """State vector snapshot (single trajectory sample under noise).
+
+        Returns a 1-D complex NumPy array of length 2**num_qubits.
+        Under noise this is NOT the ensemble state — it is one trajectory
+        sample. Use sample_trajectories(shots) for ensemble statistics.
+        """
+        return self._state_vector_impl()
+
+    @property
+    def probabilities(self) -> "np.ndarray":
+        """Basis-state probabilities as a 1-D float NumPy array.
+
+        Under noise this reflects a single trajectory. Use
+        sample_trajectories(shots) for statistically valid ensemble results.
+        """
+        return self._probabilities_impl()
+
+
+class QrackNoisyStabilizerHybrid(_QrackNoisyStabHybrid):
+    """
+    Stabilizer-hybrid simulator with depolarizing noise injected around every gate.
+
+    Same density-matrix semantics caveat as QrackNoisySimulator:
+    state_vector returns one trajectory sample, not the ensemble.
+    """
+
+    __slots__ = ()
+
+    @property
+    def state_vector(self) -> "np.ndarray":
+        """State vector snapshot (single trajectory sample under noise)."""
+        return self._state_vector_impl()
+
+    @property
+    def probabilities(self) -> "np.ndarray":
+        """Basis-state probabilities (single trajectory under noise)."""
+        return self._probabilities_impl()
+
+
 __all__ = [
     "GateType",
+    "NoisyBase",
     "Pauli",
     "QrackArgumentError",
     "QrackCircuit",
     "QrackException",
+    "QrackNoisySimulator",
+    "QrackNoisyStabilizerHybrid",
     "QrackQubitError",
     "QrackSimulator",
     "QrackStabilizer",

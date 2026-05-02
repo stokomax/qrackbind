@@ -526,6 +526,60 @@ void add_measure_shots(nb::class_<WrapperT>& cls)
 }
 
 
+// ── Noise control: set_noise_parameter, get_noise_parameter,
+//    depolarizing_channel_1qb, unitary_fidelity, reset_unitary_fidelity ───────
+// Applied only to QrackNoisySimulator and QrackNoisyStabilizerHybrid.
+// QrackSimulator, QrackStabilizer, and QrackStabilizerHybrid do NOT receive
+// this helper — their underlying SetNoiseParameter / GetUnitaryFidelity are
+// no-ops on the non-noisy stack, which would be misleading to expose.
+template <typename WrapperT>
+void add_noise_methods(nb::class_<WrapperT>& cls)
+{
+    cls
+        .def("set_noise_parameter",
+            [](WrapperT& w, real1_f lambda) {
+                w.sim->SetNoiseParameter(lambda);
+            },
+            nb::arg("lambda"),
+            "Depolarizing channel strength applied around each gate.\\n"
+            "0.0 disables noise (wrapper becomes a pass-through).\\n"
+            "Typical research values: 1e-4 to 1e-2.")
+
+        .def("get_noise_parameter",
+            [](const WrapperT& w) -> real1_f {
+                return w.sim->GetNoiseParameter();
+            },
+            "Current depolarizing channel strength.")
+
+        .def("depolarizing_channel_1qb",
+            [](WrapperT& w, bitLenInt q, real1_f lambda) {
+                w.check_qubit(q, "depolarizing_channel_1qb");
+                w.sim->DepolarizingChannelWeak1Qb(q, lambda);
+            },
+            nb::arg("qubit"), nb::arg("lambda"),
+            nb::call_guard<nb::gil_scoped_release>(),
+            "Apply an explicit single-qubit depolarizing channel of strength\\n"
+            "`lambda` to `qubit`. Independent of the global noise parameter —\\n"
+            "use for circuit-position-specific noise injection.")
+
+        .def_prop_ro("unitary_fidelity",
+            [](const WrapperT& w) -> real1_f {
+                return w.sim->GetUnitaryFidelity();
+            },
+            "Accumulated fidelity of the noisy simulation against ideal\\n"
+            "unitary evolution. Starts at 1.0; decreases monotonically as\\n"
+            "noise channels are applied. Reset via reset_unitary_fidelity().")
+
+        .def("reset_unitary_fidelity",
+            [](WrapperT& w) {
+                w.sim->ResetUnitaryFidelity();
+            },
+            "Reset the accumulated unitary fidelity to 1.0. Useful when\\n"
+            "starting a new circuit on the same simulator instance.")
+    ;
+}
+
+
 // ── State access: _state_vector_impl, _probabilities_impl, get/set_amplitude ─
 // Cost-bearing for stabilizer engines (materialises amplitudes on demand).
 // Not added to QrackStabilizer; only QrackSimulator and QrackStabilizerHybrid.

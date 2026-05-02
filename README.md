@@ -148,6 +148,7 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 | 10 | Stabilizer Classes | `QrackStabilizer` (pure Clifford) and `QrackStabilizerHybrid` (Clifford+fallback) standalone classes, templated gate helpers | :white_check_mark: |
 | 12 | Approximation Knobs and QBDD Engine | SDRP/NCRP tunable approximation on `QrackSimulator` and `QrackStabilizerHybrid`; `QrackQBdd` / `QrackQBddHybrid` standalone classes | :construction: |
 | 13 | Batched Parameter Execution and Kernel Matrix | `run_batch(circuit, params)` for amortised multi-shot parameter sweeps; `kernel_matrix(circuit, X1, X2)` for QSVM workloads; parameter-slot circuit recording in `QrackCircuit` | :construction: |
+| 14 | Noisy Wrapper Layer and Density-Matrix Methods | `QrackNoisySimulator` and `QrackNoisyStabilizerHybrid` with `QINTERFACE_NOISY` depolarizing layer; `set_noise_parameter`, `unitary_fidelity`, `depolarizing_channel_1qb`, `sample_trajectories` | :white_check_mark: |
 
 
 ## Installation
