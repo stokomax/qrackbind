@@ -19,18 +19,22 @@ jobs:
         env:
           # Stable ABI means one wheel covers Python 3.12+ — build cp312 only.
           CIBW_BUILD: "cp312-manylinux_x86_64"
-          # manylinux_2_39 has glibc 2.39, sufficient for the Qrack pre-built archive.
-          CIBW_MANYLINUX_X86_64_IMAGE: "quay.io/pypa/manylinux_2_39_x86_64"
-          # Download and install the Qrack pre-built binary inside the container
-          # before CMake runs. The FetchQrack.cmake fallback would also handle this,
-          # but doing it in before-all is faster (single download per build job).
+          # manylinux_2_34 (AlmaLinux 9, glibc 2.34). The pre-built archive was
+          # compiled on glibc 2.39 and references __isoc23_strtol (unversioned,
+          # glibc 2.38+), which auditwheel cannot detect. We build from source
+          # instead so the library uses only glibc 2.34 symbols.
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_34"
           CIBW_BEFORE_ALL: >
-            curl -fsSL
-            https://github.com/unitaryfoundation/qrack/releases/download/vm6502q.v10.7.0/libqrack-manylinux_2_39_x86_64.zip
-            -o /tmp/libqrack.zip &&
-            unzip -q /tmp/libqrack.zip -d /tmp/qrack &&
-            cp -r /tmp/qrack/include/* /usr/local/include/ &&
-            cp -r /tmp/qrack/lib/*     /usr/local/lib/ &&
+            dnf install -y cmake git ninja-build ocl-icd-devel vim-common &&
+            curl -fsSL https://raw.githubusercontent.com/KhronosGroup/OpenCL-CLHPP/v2.0.16/include/CL/opencl.hpp
+            -o /usr/include/CL/opencl.hpp &&
+            git clone --depth 1 --branch vm6502q.v10.7.0
+            https://github.com/unitaryfoundation/qrack.git /tmp/qrack_src &&
+            cmake -B /tmp/qrack_build -S /tmp/qrack_src -G Ninja
+            -DCMAKE_BUILD_TYPE=Release -DENABLE_OPENCL=ON -DENABLE_CUDA=OFF
+            -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=/usr/local &&
+            cmake --build /tmp/qrack_build --parallel 4 &&
+            cmake --install /tmp/qrack_build &&
             ldconfig
           CIBW_ENVIRONMENT: >
             QRACK_LIB_DIR=/usr/local/lib
@@ -39,6 +43,14 @@ jobs:
           CIBW_TEST_COMMAND: >
             python -c "from qrackbind import QrackSimulator;
             s = QrackSimulator(qubitCount=1); s.h(0); print('smoke test OK')"
+
+      - name: Retag wheel for multi-version abi3 compatibility
+        run: |
+          python3 -m pip install wheel
+          for w in wheelhouse/*.whl; do
+            echo "retagging $w"
+            python3 -m wheel tags --python-tag '+cp313.cp314' --remove "$w"
+          done
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4

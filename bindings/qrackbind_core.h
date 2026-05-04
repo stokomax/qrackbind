@@ -17,10 +17,15 @@
 #include "common/pauli.hpp"
 #include "qcircuit.hpp"
 
-// Qrack defines these as preprocessor macros, we have to undefine them first
-#undef bitLenInt
+// bitLenInt is a preprocessor macro in Qrack's qrack_types.hpp (expands to
+// uint8_t, uint16_t, uint32_t, or uint64_t depending on QBCAPPOW). We leave it
+// as a macro so that every vector<bitLenInt> in our binding code expands to the
+// same concrete integer type as in Qrack's API — guaranteed to match regardless
+// of how the installed Qrack library was compiled.
+//
+// bitCapInt is a typedef (Qrack namespace); we declare the aliases below for
+// code that needs them outside of the Qrack namespace.
 #undef bitCapInt
-using bitLenInt = uint16_t;
 using bitCapInt = uint64_t;
 using real1_f   = float;
 

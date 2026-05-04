@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15...3.26)
+cmake_minimum_required(VERSION 3.18...3.26)
 project(${SKBUILD_PROJECT_NAME} LANGUAGES CXX)
 
 # Optional compilation options
@@ -27,15 +27,15 @@ if (NOT SKBUILD)
   after editing C++ files.")
 endif()
 
-# Per nanobind docs.
-if (CMAKE_VERSION VERSION_LESS 3.18)
-  set(DEV_MODULE Development)
-else()
-  set(DEV_MODULE Development.Module)
-endif()
-
-# Try to import all Python components potentially needed by nanobind
-find_package(Python 3.12 COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
+# Per nanobind docs — Development.Module and Development.SABIModule
+# both require CMake >= 3.18. SABIModule provides the Python::SABIModule
+# target that nanobind's STABLE_ABI guard checks for; without it, the flag
+# is silently ignored and the extension compiles against full (non-abi3)
+# headers, producing a version-tagged .so that only works on the build
+# host's Python version.
+find_package(Python 3.12
+  COMPONENTS Interpreter Development.Module Development.SABIModule
+  REQUIRED)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,16 +53,12 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
 find_package(nanobind CONFIG REQUIRED)
 
-# --- Qrack Build Options ---
-option(ENABLE_OPENCL "Enable OpenCL GPU acceleration" ON)
-option(ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
-option(ENABLE_SSE3 "Enable SSE3 CPU instructions" ON)
-option(ENABLE_AVX "Enable AVX CPU instructions" ON)
-option(FPPOW "Floating point precision exponent (5=single, 6=double)" 5)
-
 # --- Qrack ---
 find_library(QRACK_LIB qrack
-    HINTS $ENV{QRACK_LIB_DIR} /usr/local/lib/qrack /usr/lib/qrack)
+    HINTS $ENV{QRACK_LIB_DIR}
+          /usr/local/lib/qrack /usr/lib/qrack
+          /usr/local/lib /usr/local/lib64
+          /usr/lib /usr/lib64)
 find_path(QRACK_INCLUDE qfactory.hpp
     HINTS $ENV{QRACK_INCLUDE_DIR}
           /usr/local/include/qrack
@@ -70,7 +66,7 @@ find_path(QRACK_INCLUDE qfactory.hpp
 
 if(NOT QRACK_LIB OR NOT QRACK_INCLUDE)
     message(STATUS "Qrack not found on system — fetching pre-built binary...")
-    include(cmake/FetchQrack)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FetchQrack)
 endif()
 
 message(STATUS "Qrack lib:     ${QRACK_LIB}")

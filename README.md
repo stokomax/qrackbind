@@ -19,7 +19,9 @@ Where pyqrack is a pure-Python wrapper that communicates with Qrack through a C 
 
 **Framework ecosystem integration**
 
-PennyLane, Qiskit, and QuEra Bloqade each interact with a quantum simulator through a small, well-defined dispatch interface rather than the full gate method surface. `qrackbind` provides the `QrackCircuit` class and `GateType` enum as a typed dispatch layer shared across all three frameworks. A single gate dispatch table maps PennyLane operation names, Qiskit gate names, and Bloqade IR calls onto the same C++ methods. Migration for existing Bloqade users consists of updating the package dependency and import statements; all gate method names, constructor keyword arguments, and the `Pauli` enum are preserved without change.
+PennyLane, Qiskit, and QuEra Bloqade each interact with a quantum simulator through a small, well-defined dispatch interface rather than the full gate method surface. `qrackbind` provides the `QrackCircuit` class and `GateType` enum as a typed dispatch layer shared across frameworks. A gate dispatch table maps Qiskit gate names and Bloqade IR calls onto the same C++ methods. Migration for existing Bloqade users consists of updating the package dependency and import statements; all gate method names, constructor keyword arguments, and the `Pauli` enum are preserved without change.
+
+PennyLane device support is provided by the standalone [pennylane-qrb](https://github.com/stokomax/pennylane-qrb) plugin, which builds on top of `qrackbind`.
 
 **Compiled extension performance**
 
@@ -141,10 +143,10 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 | 5 | Exception Handling | `QrackException`, `QrackQubitError`, `QrackArgumentError`, C++ exception translator | :white_check_mark: |
 | 6 | QrackCircuit | `QrackCircuit`, `GateType`, `append_gate`, `run`, `inverse`, `append`, `gate_count`, `exp_val_unitary` | :white_check_mark: |
 | 7 | Stub Generation and Type Annotations | `.pyi` stubs, docstrings on all bindings, `pyright` passing | :construction: |
-| 8 | PennyLane Device Plugin | `qrackbind.pennylane` device, `execute()`, parameter-shift gradients, VQE | :white_check_mark: |
+| 8 | PennyLane Device Plugin | Moved to the standalone [pennylane-qrb](https://github.com/stokomax/pennylane-qrb) package | :arrow_right: |
 | 9 | Packaging and Distribution | PyPI wheel via cibuildwheel, CMake `FetchContent` auto-download, `scripts/install_qrack.sh`, `uv run` scripts | :construction: |
 | 10 | Stabilizer Classes | `QrackStabilizer` (pure Clifford) and `QrackStabilizerHybrid` (Clifford+fallback) standalone classes, templated gate helpers | :white_check_mark: |
-| 12 | Approximation Knobs and QBDD Engine | SDRP/NCRP tunable approximation on `QrackSimulator` and `QrackStabilizerHybrid`; `QrackQBdd` / `QrackQBddHybrid` standalone classes; `qrackbind.qbdd` and `qrackbind.qbdd_hybrid` PennyLane devices | :construction: |
+| 12 | Approximation Knobs and QBDD Engine | SDRP/NCRP tunable approximation on `QrackSimulator` and `QrackStabilizerHybrid`; `QrackQBdd` / `QrackQBddHybrid` standalone classes | :construction: |
 | 13 | Batched Parameter Execution and Kernel Matrix | `run_batch(circuit, params)` for amortised multi-shot parameter sweeps; `kernel_matrix(circuit, X1, X2)` for QSVM workloads; parameter-slot circuit recording in `QrackCircuit` | :construction: |
 
 
@@ -153,7 +155,7 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 ### End users
 
 ```bash
-pip install qrackbind
+pip install --pre 'https://github.com/stokomax/qrackbind/releases/download/v0.2.2/qrackbind-0.2.2-cp312.cp313.cp314-abi3-manylinux_2_34_x86_64.whl'
 ```
 
 That's it. The wheel on PyPI includes a pre-built Qrack library — no compiler, CMake, or system Qrack installation is needed.
@@ -553,7 +555,7 @@ except QrackArgumentError as e:
 |--------|-----------------|
 | **Typed Clifford contract** | `QrackStabilizer` only exposes Clifford gates. Non-Clifford methods (`rx`, `t`, `mtrx`, …) do not exist on the object — Pyright and IDE autocomplete catch incorrect usage at edit time rather than at runtime inside C++. |
 | **Stack-overhead control** | Skipping `QINTERFACE_TENSOR_NETWORK` / `QINTERFACE_QUNIT` removes two management layers. Useful for benchmarking the bare stabilizer engine and for circuits where the upper layers add cost without benefit. |
-| **Framework plugin targets** | Direct device names `qrackbind.stabilizer` and `qrackbind.stabilizer_hybrid` can map onto these classes without threading `isStabilizerHybrid=True` through `QrackSimulator` kwargs. |
+| **Framework plugin targets** | These classes serve as the direct simulation backends for framework integrations; the [pennylane-qrb](https://github.com/stokomax/pennylane-qrb) plugin exposes them as `qrackbind.stabilizer` and `qrackbind.stabilizer_hybrid` PennyLane devices. |
 
 The `isStabilizerHybrid` flag on `QrackSimulator` remains for backward compatibility with pyqrack and Bloqade users.
 
@@ -663,123 +665,9 @@ QrackStabilizerHybrid(
 )
 ```
 
-### PennyLane Device Plugin
+### PennyLane
 
-`qrackbind` ships a PennyLane 0.44+ device plugin via `qrackbind.pennylane`. The `QrackDevice` class integrates with PennyLane's device plugin architecture, enabling Qrack as a drop-in simulator for PennyLane QNodes.
-
-```python
-import pennylane as qml
-
-# Create a QrackDevice with 2 qubits
-dev = qml.device("qrackbind.simulator", wires=2)
-
-# Run a QNode
-@qml.qnode(dev)
-def circuit(x):
-    qml.Hadamard(wires=0)
-    qml.CNOT(wires=[0, 1])
-    qml.RX(x, wires=0)
-    return qml.expval(qml.PauliZ(0) @ qml.PauliZ(1))
-
-result = circuit(0.5)
-print(result)  # ≈ cos(0.5) ≈ 0.877
-```
-
-#### Parameter-shift gradients
-
-The device supports parameter-shift differentiation (`diff_method="parameter-shift"`). Use `argnums=` on `qml.grad()` since NumPy 2.0 removed the `requires_grad` attribute:
-
-```python
-@qml.qnode(dev, diff_method="parameter-shift")
-def circuit(x):
-    qml.RX(x, wires=0)
-    return qml.expval(qml.PauliZ(0))
-
-import numpy as np
-x = np.array(0.5)
-grad = qml.grad(circuit, argnums=0)(x)
-print(grad)  # ≈ -sin(0.5) ≈ -0.479
-```
-
-#### Measurements
-
-All standard PennyLane measurements are supported:
-
-```python
-@qml.qnode(dev)
-def circuit():
-    qml.Hadamard(wires=0)
-    return qml.state(), qml.probs(wires=[0]), qml.sample(wires=[0, 1])
-
-sv, probs, samples = circuit()
-# sv:       full 2^2 = 4 element state vector
-# probs:    [0.5, 0.5]
-# samples:  array of measurement outcomes
-```
-
-#### Simulator configuration
-
-QrackSimulator keyword arguments are forwarded directly to the device constructor:
-
-```python
-dev = qml.device(
-    "qrackbind.simulator",
-    wires=4,
-    isTensorNetwork=True,   # tensor-network simulation
-    isOpenCL=True,          # GPU acceleration
-)
-```
-
-#### Gate support
-
-30+ PennyLane operations are natively supported: `Hadamard`, `PauliX/Y/Z`, `S`, `T`, `SX`, `RX/RY/RZ/R1`, `CNOT`, `CY`, `CZ`, `SWAP`, `ISWAP`, `Toffoli`, `CCZ`, `MCX/MCY/MCZ`, `CH`, `CRX/CRY/CRZ`, `PhaseShift`, `Rot`, `U`, `MultiControlledX`, `ControlledQubitUnitary`, and more. Gates not in the native list (e.g. `IsingXX`, `IsingYY`, `IsingZZ`) are decomposed by PennyLane before reaching the device.
-
-`PhaseShift` is implemented with an explicit 2×2 phase matrix so it follows
-PennyLane semantics (`diag(1, exp(iφ))`). This differs from the low-level Qrack
-`r1`/`RT` binding documented above, which behaves as a global phase rotation in
-the current Qrack stack and therefore does not change probabilities by itself.
-
-#### Sample measurement shapes
-
-`qml.sample()` shape depends on whether an observable is provided:
-
-```python
-dev = qml.device("qrackbind.simulator", wires=2, shots=1000)
-
-@qml.qnode(dev)
-def circuit_obs():
-    qml.Hadamard(wires=0)
-    return qml.sample(qml.PauliZ(0))   # observable → eigenvalues
-
-result = circuit_obs()
-print(result.shape)   # (1000,)  — float eigenvalues: +1.0 or -1.0
-
-@qml.qnode(dev)
-def circuit_wires():
-    qml.Hadamard(wires=0)
-    qml.CNOT(wires=[0, 1])
-    return qml.sample(wires=[0, 1])    # no observable → bit strings
-
-result = circuit_wires()
-print(result.shape)   # (1000, 2) — integer bits: 0 or 1
-```
-
-This is the standard PennyLane convention: observable-based sampling returns
-a 1-D eigenvalue array; wire-based sampling returns a 2-D bit array.
-
-#### Test coverage
-
-The PennyLane integration is covered by the adapted compatibility suite under
-`tests/pennylane/`, which exercises state preparation, single-, two-, three-,
-and four-qubit operation application, parametrized gates, unitaries,
-probabilities, expectations, variances, parameter-shift gradients, stabilizer
-device expval/variance/sampling, and the hybrid device through the qrackbind
-device API.
-
-```bash
-uv run pytest tests/pennylane -q
-# 123 passed
-```
+PennyLane device support for `qrackbind` is provided by the standalone [pennylane-qrb](https://github.com/stokomax/pennylane-qrb) plugin. Refer to that repository for installation instructions, supported operations, and usage examples.
 
 ---
 
