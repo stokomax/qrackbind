@@ -155,7 +155,7 @@ entropy  = -np.sum(probs * np.log2(probs + 1e-12))
 ### End users
 
 ```bash
-pip install qrackbind
+pip install --pre 'https://github.com/stokomax/qrackbind/releases/download/v0.2.2/qrackbind-0.2.2-cp312.cp313.cp314-abi3-manylinux_2_34_x86_64.whl'
 ```
 
 That's it. The wheel on PyPI includes a pre-built Qrack library — no compiler, CMake, or system Qrack installation is needed.
