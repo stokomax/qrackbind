@@ -1,6 +1,6 @@
 [project]
 name = "qrackbind"
-version = "0.2.3"
+version = "0.3.0"
 description = "nanobind Python bindings for the Qrack quantum simulator"
 readme = "README.md"
 license = { text = "MIT" }
