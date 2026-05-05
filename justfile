@@ -105,10 +105,14 @@ test: install
 test-fast *args="":
     uv run pytest {{args}}
 
-# Manually create stub files. 
+# Regenerate _core.pyi from the installed extension via nanobind.stubgen.
+# --include-private keeps _state_vector_impl and _probabilities_impl, which
+# are called by the QrackSimulator / QrackStabilizerHybrid property wrappers
+# in __init__.py and must appear in the stub for pyright to resolve them.
 stubs *args="": install
     uv run python -m nanobind.stubgen \
         -m {{package}}._core \
+        --include-private \
         -M src/{{package}}/py.typed \
         -O src/{{package}} \
         {{args}}

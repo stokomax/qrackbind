@@ -50,7 +50,7 @@ enum class GateType {
     SqrtX, ISqrtX,
     RX, RY, RZ, R1,
     CNOT, CY, CZ, CH,
-    MCX, MCY, MCZ,
+    MCX, MCY, MCZ, MCH,
     SWAP, ISWAP,
     U,
     Mtrx,
@@ -186,14 +186,21 @@ static QCircuitGatePtr make_circuit_gate(
         }
 
         // ── Multi-controlled gates (target is last qubit) ─────────────────
+        //
+        // controlPerm is a bitfield over the ordered control set where bit i
+        // corresponds to the i-th element of the sorted controls set. To
+        // require ALL controls to be |1>, the pattern must be (1 << N) - 1
+        // (all N bits set). ONE_BCI (= 1) is correct only for N = 1; for
+        // N >= 2 it would fire when only the lowest-indexed control is |1>.
         case GateType::MCX: {
             if (qubits.size() < 2)
                 throw QrackError("MCX requires at least 2 qubits (controls + target)",
                                  QrackErrorKind::InvalidArgument);
             const bitLenInt tgt = qubits.back();
             std::set<bitLenInt> controls(qubits.begin(), qubits.end() - 1);
+            const bitCapInt perm = (bitCapInt(1) << controls.size()) - 1U;
             return std::make_shared<Qrack::QCircuitGate>(
-                tgt, X_MTRX, controls, ONE_BCI);
+                tgt, X_MTRX, controls, perm);
         }
         case GateType::MCY: {
             if (qubits.size() < 2)
@@ -201,8 +208,9 @@ static QCircuitGatePtr make_circuit_gate(
                                  QrackErrorKind::InvalidArgument);
             const bitLenInt tgt = qubits.back();
             std::set<bitLenInt> controls(qubits.begin(), qubits.end() - 1);
+            const bitCapInt perm = (bitCapInt(1) << controls.size()) - 1U;
             return std::make_shared<Qrack::QCircuitGate>(
-                tgt, Y_MTRX, controls, ONE_BCI);
+                tgt, Y_MTRX, controls, perm);
         }
         case GateType::MCZ: {
             if (qubits.size() < 2)
@@ -210,8 +218,19 @@ static QCircuitGatePtr make_circuit_gate(
                                  QrackErrorKind::InvalidArgument);
             const bitLenInt tgt = qubits.back();
             std::set<bitLenInt> controls(qubits.begin(), qubits.end() - 1);
+            const bitCapInt perm = (bitCapInt(1) << controls.size()) - 1U;
             return std::make_shared<Qrack::QCircuitGate>(
-                tgt, Z_MTRX, controls, ONE_BCI);
+                tgt, Z_MTRX, controls, perm);
+        }
+        case GateType::MCH: {
+            if (qubits.size() < 2)
+                throw QrackError("MCH requires at least 2 qubits (controls + target)",
+                                 QrackErrorKind::InvalidArgument);
+            const bitLenInt tgt = qubits.back();
+            std::set<bitLenInt> controls(qubits.begin(), qubits.end() - 1);
+            const bitCapInt perm = (bitCapInt(1) << controls.size()) - 1U;
+            return std::make_shared<Qrack::QCircuitGate>(
+                tgt, H_MTRX, controls, perm);
         }
 
         // ── SWAP — uses QCircuit::Swap() which decomposes to 3 CNOTs ──────
@@ -311,6 +330,7 @@ void bind_circuit(nb::module_& m) {
         .value("MCX",    GateType::MCX,    "Multi-controlled X — last qubit is target")
         .value("MCY",    GateType::MCY,    "Multi-controlled Y — last qubit is target")
         .value("MCZ",    GateType::MCZ,    "Multi-controlled Z — last qubit is target")
+        .value("MCH",    GateType::MCH,    "Multi-controlled H — last qubit is target")
         .value("SWAP",   GateType::SWAP,   "SWAP gate — 2 qubits")
         .value("ISWAP",  GateType::ISWAP,  "iSWAP gate — not yet implemented")
         .value("U",      GateType::U,      "Arbitrary unitary U(θ, φ, λ) — 3 angle params")

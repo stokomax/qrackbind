@@ -7,28 +7,6 @@ from typing import Annotated
 import numpy
 from numpy.typing import NDArray
 
-class QrackException(RuntimeError):
-    """
-    Base class for all qrackbind errors.
-
-    Inherits RuntimeError so it can be caught by generic error handlers.
-    """
-
-class QrackQubitError(QrackException):
-    """
-    Qubit index out of the valid range [0, num_qubits).
-
-    Raised when a gate or measurement method is called with an index
-    that exceeds the simulator's qubit count.
-    """
-
-class QrackArgumentError(QrackException):
-    """
-    Invalid method arguments.
-
-    Raised when arguments have the wrong type, length mismatch,
-    out-of-range values, or other argument validation failures.
-    """
 
 class Pauli(enum.IntEnum):
     """
@@ -100,38 +78,14 @@ class QrackSimulator:
     def s(self, qubit: int) -> None:
         """S gate — phase shift π/2."""
 
-    def t(self, qubit: int) -> None:
-        """T gate — phase shift π/4."""
-
     def sdg(self, qubit: int) -> None:
         """S† (inverse S) gate."""
-
-    def tdg(self, qubit: int) -> None:
-        """T† (inverse T) gate."""
 
     def sx(self, qubit: int) -> None:
         """√X gate (half-X). Native Qiskit basis gate."""
 
     def sxdg(self, qubit: int) -> None:
         """√X† gate (inverse √X)."""
-
-    def rx(self, angle: float, qubit: int) -> None:
-        """Rotate around X axis by angle radians. Equiv: exp(-i·angle/2·X)."""
-
-    def ry(self, angle: float, qubit: int) -> None:
-        """Rotate around Y axis by angle radians."""
-
-    def rz(self, angle: float, qubit: int) -> None:
-        """Rotate around Z axis by angle radians."""
-
-    def r1(self, angle: float, qubit: int) -> None:
-        """Phase rotation: apply e^(i·angle) to |1> state."""
-
-    def u(self, theta: float, phi: float, lam: float, qubit: int) -> None:
-        """General single-qubit unitary: U(θ,φ,λ). Decomposes to RZ·RY·RZ."""
-
-    def u2(self, phi: float, lam: float, qubit: int) -> None:
-        """U2 gate: U(π/2, φ, λ)."""
 
     def cnot(self, control: int, target: int) -> None:
         """Controlled-NOT (CNOT / CX) gate."""
@@ -172,6 +126,33 @@ class QrackSimulator:
     def mch(self, controls: Sequence[int], target: int) -> None:
         """Multiply-controlled H."""
 
+    def mach(self, controls: Sequence[int], target: int) -> None:
+        """Anti-controlled H. Fires when all controls are |0>."""
+
+    def t(self, qubit: int) -> None:
+        """T gate — phase shift π/4."""
+
+    def tdg(self, qubit: int) -> None:
+        """T† (inverse T) gate."""
+
+    def rx(self, angle: float, qubit: int) -> None:
+        """Rotate around X axis by angle radians. Equiv: exp(-i·angle/2·X)."""
+
+    def ry(self, angle: float, qubit: int) -> None:
+        """Rotate around Y axis by angle radians."""
+
+    def rz(self, angle: float, qubit: int) -> None:
+        """Rotate around Z axis by angle radians."""
+
+    def r1(self, angle: float, qubit: int) -> None:
+        """Phase rotation: apply e^(i·angle) to |1> state."""
+
+    def u(self, theta: float, phi: float, lam: float, qubit: int) -> None:
+        """General single-qubit unitary: U(θ,φ,λ). Decomposes to RZ·RY·RZ."""
+
+    def u2(self, phi: float, lam: float, qubit: int) -> None:
+        """U2 gate: U(π/2, φ, λ)."""
+
     def mcrz(self, angle: float, controls: Sequence[int], target: int) -> None:
         """Multiply-controlled RZ."""
 
@@ -192,51 +173,50 @@ class QrackSimulator:
         Uniformly-controlled single-qubit gate. mtrxs is a flat list of 4 * 2**len(controls) complex values — one 2x2 unitary per control permutation, in row-major order.
         """
 
+    def measure(self, qubit: int) -> bool:
+        """Measure qubit. Returns True=|1>, False=|0>. Collapses state."""
+
+    def measure_all(self) -> list[bool]:
+        """Measure all qubits. Returns list[bool], LSB first."""
+
+    def force_measure(self, qubit: int, result: bool) -> bool:
+        """
+        Force measurement outcome. Projects state to result without random draw.
+        """
+
+    def prob(self, qubit: int) -> float:
+        """Probability of |1> for qubit. Does NOT collapse state."""
+
+    def prob_all(self) -> list[float]:
+        """Per-qubit |1> probabilities for all qubits. Does NOT collapse state."""
+
+    def measure_shots(self, qubits: Sequence[int], shots: int) -> dict[int, int]:
+        """
+        Sample 'shots' measurements of 'qubits' without collapsing state.
+        Returns dict[int, int]: measurement result (integer bit pattern) → count.
+        """
+
     def measure_pauli(self, basis: Pauli, qubit: int) -> bool:
         """
         Measure a qubit in the specified Pauli basis.
 
         Rotates the qubit into the computational basis, measures, and
-        rotates back. Returns the same bit-valued bool as :meth:`measure`:
-        ``True`` if the rotated qubit collapsed to ``|1>``, ``False`` for
-        ``|0>``. For Pauli Z, this means ``True`` ↔ −1 eigenvalue and
-        ``False`` ↔ +1 eigenvalue. The state is collapsed in the chosen
-        basis.
-
-        Example::
-
-            sim.x(0)
-            sim.measure_pauli(Pauli.PauliZ, 0)  # → True (|1>)
+        rotates back. Returns True if the rotated qubit collapsed to |1>.
+        The state is collapsed in the chosen basis.
         """
 
     def exp_val(self, basis: Pauli, qubit: int) -> float:
         """
-        Single-qubit Pauli expectation value.
-
-        Equivalent to ``exp_val_pauli([basis], [qubit])``. Result is
-        in [-1.0, +1.0]. Does not collapse the state.
-
-        Example::
-
-            sim.h(0)
-            print(sim.exp_val(Pauli.PauliX, 0))  # → 1.0
+        Single-qubit Pauli expectation value. Result is in [-1.0, +1.0].
+        Does not collapse the state.
         """
 
     def exp_val_pauli(self, paulis: Sequence[Pauli], qubits: Sequence[int]) -> float:
         """
         Expectation value of a Pauli tensor product observable.
 
-        Returns <ψ|P₀⊗P₁⊗…⊗Pₙ|ψ> where each Pᵢ is a Pauli operator
-        acting on the corresponding qubit. Result is in [-1.0, +1.0].
+        Returns <ψ|P₀⊗P₁⊗…⊗Pₙ|ψ>. Result is in [-1.0, +1.0].
         Does not collapse the state.
-
-        ``paulis`` and ``qubits`` must have equal length.
-
-        Example::
-
-            # Measure <ZZ> on a Bell state — should be +1
-            sim.h(0); sim.cnot(0, 1)
-            sim.exp_val_pauli([Pauli.PauliZ, Pauli.PauliZ], [0, 1])
         """
 
     def variance_pauli(self, paulis: Sequence[Pauli], qubits: Sequence[int]) -> float:
@@ -245,40 +225,39 @@ class QrackSimulator:
 
         For a Pauli operator P (P² = I), Var(P) = 1 − <P>².
         Result is in [0.0, 1.0]. Does not collapse the state.
-
-        Eigenstates have variance 0; maximally-mixed states have
-        variance 1.
         """
 
     def exp_val_all(self, basis: Pauli) -> float:
-        """
-        Expectation value of the same Pauli operator applied to every
-        qubit. Equivalent to::
-
-            sim.exp_val_pauli([basis] * sim.num_qubits,
-                              list(range(sim.num_qubits)))
-        """
+        """Expectation value of the same Pauli operator applied to every qubit."""
 
     def exp_val_floats(self, qubits: Sequence[int], weights: Sequence[float]) -> float:
         """
         Expectation value of a weighted single-qubit observable.
 
-        Each qubit gets two classical eigenvalues — one for ``|0>`` and
-        one for ``|1>``. ``weights`` must have length ``2 * len(qubits)``::
-
-            weights = [w0_for_|0>, w0_for_|1>,
-                       w1_for_|0>, w1_for_|1>,
-                       ...]
-
-        Returns ``Σᵢ (wᵢ⁰ · P(qᵢ=|0>) + wᵢ¹ · P(qᵢ=|1>))``. Used by
-        PennyLane's Hamiltonian expectation-value path.
+        weights must have length 2 * len(qubits): [w_|0> for q0, w_|1> for q0, w_|0> for q1, ...]
         """
 
     def variance_floats(self, qubits: Sequence[int], weights: Sequence[float]) -> float:
         """
-        Variance of a weighted single-qubit observable. Symmetric
-        counterpart to :meth:`exp_val_floats`. ``weights`` must have
-        length ``2 * len(qubits)`` (see :meth:`exp_val_floats`).
+        Variance of a weighted single-qubit observable. See exp_val_floats for weight convention.
+        """
+
+    def _state_vector_impl(self) -> Annotated[NDArray[numpy.complex64], dict(shape=(None,))]:
+        """Internal: backing function for the state_vector property."""
+
+    def _probabilities_impl(self) -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]:
+        """Internal: backing function for the probabilities property."""
+
+    def get_amplitude(self, index: int) -> complex:
+        """
+        Get the complex amplitude of a specific basis state by integer index.
+        Does not collapse the state.
+        """
+
+    def set_amplitude(self, index: int, amplitude: complex) -> None:
+        """
+        Set the complex amplitude of a specific basis state.
+        Does NOT re-normalise — call update_running_norm() if needed.
         """
 
     def exp_val_unitary(self, qubits: Sequence[int], basis_ops: Sequence[complex], eigen_vals: Sequence[float] = []) -> float:
@@ -300,23 +279,6 @@ class QrackSimulator:
         weights. Low-level API used by Shor's and arithmetic expectation
         paths.
         """
-
-    def measure(self, qubit: int) -> bool:
-        """Measure qubit. Returns True=|1>, False=|0>. Collapses state."""
-
-    def measure_all(self) -> list[bool]:
-        """Measure all qubits. Returns list[bool], LSB first."""
-
-    def force_measure(self, qubit: int, result: bool) -> bool:
-        """
-        Force measurement outcome. Projects state to result without random draw.
-        """
-
-    def prob(self, qubit: int) -> float:
-        """Probability of |1> for qubit. Does NOT collapse state."""
-
-    def prob_all(self) -> list[float]:
-        """Per-qubit |1> probabilities for all qubits. Does NOT collapse state."""
 
     def allocate(self, start: int, length: int) -> int:
         """
@@ -367,11 +329,6 @@ class QrackSimulator:
         Reset state to the computational basis state |value>. Bit i of value sets qubit i.
         """
 
-    def measure_shots(self, qubits: Sequence[int], shots: int) -> dict[int, int]:
-        """
-        Sample 'shots' measurements of 'qubits' without collapsing state. Returns dict[int, int]: measurement result -> count.
-        """
-
     def add(self, value: int, start: int, length: int) -> None:
         """
         Add classical integer 'value' to the quantum register [start, start+length).
@@ -419,19 +376,6 @@ class QrackSimulator:
         build's complex dtype (complex64 by default). The array is copied
         into the simulator. SetQuantumState does NOT renormalise — call
         update_running_norm() afterwards if the input may not be unit-norm.
-        """
-
-    def get_amplitude(self, index: int) -> complex:
-        """
-        Get the complex amplitude of a specific basis state by integer index.
-        index must be in [0, 2**num_qubits). Does not collapse the state.
-        """
-
-    def set_amplitude(self, index: int, amplitude: complex) -> None:
-        """
-        Set the complex amplitude of a specific basis state.
-        Does NOT re-normalise — call update_running_norm() if the resulting
-        state may not be unit-norm.
         """
 
     def get_reduced_density_matrix(self, qubits: Sequence[int]) -> Annotated[NDArray[numpy.complex64], dict(shape=(None, None))]:
@@ -566,19 +510,22 @@ class GateType(enum.Enum):
     MCZ = 20
     """Multi-controlled Z — last qubit is target"""
 
-    SWAP = 21
+    MCH = 21
+    """Multi-controlled H — last qubit is target"""
+
+    SWAP = 22
     """SWAP gate — 2 qubits"""
 
-    ISWAP = 22
+    ISWAP = 23
     """iSWAP gate — not yet implemented"""
 
-    U = 23
+    U = 24
     """Arbitrary unitary U(θ, φ, λ) — 3 angle params"""
 
-    Mtrx = 24
+    Mtrx = 25
     """Arbitrary 2x2 unitary — 8 float params (4 complex)"""
 
-    MCMtrx = 25
+    MCMtrx = 26
     """Multi-controlled arbitrary 2x2 — 8 float params"""
 
 class QrackCircuit:
@@ -659,8 +606,7 @@ class QrackStabilizer:
     Pure Clifford-only quantum simulator. Polynomial memory in qubit count.
 
     Supports H, X, Y, Z, S, S†, √X, √X† single-qubit gates; CNOT, CY, CZ,
-    SWAP, iSWAP two-qubit gates; and their multiply-controlled forms (1-control
-    only for MCX on the underlying QINTERFACE_STABILIZER engine).
+    SWAP, iSWAP two-qubit gates; and their multiply-controlled forms.
 
     Non-Clifford gates (RX, RY, RZ, U, T, T†, arbitrary matrices) are NOT
     exposed — use QrackStabilizerHybrid or QrackSimulator for those.
@@ -674,36 +620,30 @@ class QrackStabilizer:
         """Create a stabilizer simulator on n qubits, initialised to |0...0>."""
 
     def __repr__(self) -> str: ...
-    def __enter__(self) -> QrackStabilizer: ...
-    def __exit__(self, exc_type: object | None, exc_val: object | None, exc_tb: object | None) -> None: ...
-
-    # ── Clifford single-qubit gates ──────────────────────────────────────────
 
     def h(self, qubit: int) -> None:
         """Hadamard gate."""
 
     def x(self, qubit: int) -> None:
-        """Pauli X."""
+        """Pauli X (bit flip) gate."""
 
     def y(self, qubit: int) -> None:
-        """Pauli Y."""
+        """Pauli Y gate."""
 
     def z(self, qubit: int) -> None:
-        """Pauli Z."""
+        """Pauli Z (phase flip) gate."""
 
     def s(self, qubit: int) -> None:
-        """S gate (phase π/2)."""
+        """S gate — phase shift π/2."""
 
     def sdg(self, qubit: int) -> None:
-        """S† (inverse S)."""
+        """S† (inverse S) gate."""
 
     def sx(self, qubit: int) -> None:
-        """√X gate."""
+        """√X gate (half-X). Native Qiskit basis gate."""
 
     def sxdg(self, qubit: int) -> None:
-        """√X†."""
-
-    # ── Clifford two-qubit gates ─────────────────────────────────────────────
+        """√X† gate (inverse √X)."""
 
     def cnot(self, control: int, target: int) -> None:
         """Controlled-NOT (CNOT / CX) gate."""
@@ -720,25 +660,32 @@ class QrackStabilizer:
     def iswap(self, qubit1: int, qubit2: int) -> None:
         """iSWAP gate."""
 
+    def ccnot(self, control1: int, control2: int, target: int) -> None:
+        """Toffoli (CCX / CCNOT) gate."""
+
     def mcx(self, controls: Sequence[int], target: int) -> None:
-        """Multiply-controlled X. On QINTERFACE_STABILIZER, only 1 control is supported."""
+        """Multiply-controlled X. Fires when all controls are |1>."""
+
+    def macx(self, controls: Sequence[int], target: int) -> None:
+        """Anti-controlled X. Fires when all controls are |0>."""
 
     def mcy(self, controls: Sequence[int], target: int) -> None:
         """Multiply-controlled Y."""
 
-    def mcz(self, controls: Sequence[int], target: int) -> None:
-        """Multiply-controlled Z."""
-
-    def macx(self, controls: Sequence[int], target: int) -> None:
-        """Anti-controlled X."""
-
     def macy(self, controls: Sequence[int], target: int) -> None:
         """Anti-controlled Y."""
+
+    def mcz(self, controls: Sequence[int], target: int) -> None:
+        """Multiply-controlled Z."""
 
     def macz(self, controls: Sequence[int], target: int) -> None:
         """Anti-controlled Z."""
 
-    # ── Measurement ─────────────────────────────────────────────────────────
+    def mch(self, controls: Sequence[int], target: int) -> None:
+        """Multiply-controlled H."""
+
+    def mach(self, controls: Sequence[int], target: int) -> None:
+        """Anti-controlled H. Fires when all controls are |0>."""
 
     def measure(self, qubit: int) -> bool:
         """Measure qubit. Returns True=|1>, False=|0>. Collapses state."""
@@ -747,29 +694,67 @@ class QrackStabilizer:
         """Measure all qubits. Returns list[bool], LSB first."""
 
     def force_measure(self, qubit: int, result: bool) -> bool:
-        """Force measurement outcome without random draw."""
+        """
+        Force measurement outcome. Projects state to result without random draw.
+        """
 
     def prob(self, qubit: int) -> float:
         """Probability of |1> for qubit. Does NOT collapse state."""
 
     def prob_all(self) -> list[float]:
-        """Per-qubit |1> probabilities for all qubits."""
+        """Per-qubit |1> probabilities for all qubits. Does NOT collapse state."""
 
-    # ── Pauli observables ────────────────────────────────────────────────────
+    def measure_shots(self, qubits: Sequence[int], shots: int) -> dict[int, int]:
+        """
+        Sample 'shots' measurements of 'qubits' without collapsing state.
+        Returns dict[int, int]: measurement result (integer bit pattern) → count.
+        """
 
     def measure_pauli(self, basis: Pauli, qubit: int) -> bool:
-        """Measure a qubit in the specified Pauli basis."""
+        """
+        Measure a qubit in the specified Pauli basis.
+
+        Rotates the qubit into the computational basis, measures, and
+        rotates back. Returns True if the rotated qubit collapsed to |1>.
+        The state is collapsed in the chosen basis.
+        """
 
     def exp_val(self, basis: Pauli, qubit: int) -> float:
-        """Single-qubit Pauli expectation value."""
+        """
+        Single-qubit Pauli expectation value. Result is in [-1.0, +1.0].
+        Does not collapse the state.
+        """
 
     def exp_val_pauli(self, paulis: Sequence[Pauli], qubits: Sequence[int]) -> float:
-        """Expectation value of a Pauli tensor product observable."""
+        """
+        Expectation value of a Pauli tensor product observable.
+
+        Returns <ψ|P₀⊗P₁⊗…⊗Pₙ|ψ>. Result is in [-1.0, +1.0].
+        Does not collapse the state.
+        """
 
     def variance_pauli(self, paulis: Sequence[Pauli], qubits: Sequence[int]) -> float:
-        """Variance of a Pauli tensor product observable."""
+        """
+        Variance of a Pauli tensor product observable.
 
-    # ── State management ─────────────────────────────────────────────────────
+        For a Pauli operator P (P² = I), Var(P) = 1 − <P>².
+        Result is in [0.0, 1.0]. Does not collapse the state.
+        """
+
+    def exp_val_all(self, basis: Pauli) -> float:
+        """Expectation value of the same Pauli operator applied to every qubit."""
+
+    def exp_val_floats(self, qubits: Sequence[int], weights: Sequence[float]) -> float:
+        """
+        Expectation value of a weighted single-qubit observable.
+
+        weights must have length 2 * len(qubits): [w_|0> for q0, w_|1> for q0, w_|0> for q1, ...]
+        """
+
+    def variance_floats(self, qubits: Sequence[int], weights: Sequence[float]) -> float:
+        """
+        Variance of a weighted single-qubit observable. See exp_val_floats for weight convention.
+        """
 
     @property
     def num_qubits(self) -> int:
@@ -781,6 +766,9 @@ class QrackStabilizer:
     def set_permutation(self, permutation: int) -> None:
         """Reset state to the computational basis state |permutation>."""
 
+    def __enter__(self) -> QrackStabilizer: ...
+
+    def __exit__(self, exc_type: object | None, exc_val: object | None, exc_tb: object | None) -> None: ...
 
 class QrackStabilizerHybrid:
     """
@@ -789,81 +777,43 @@ class QrackStabilizerHybrid:
     stabilizer mode for as long as the circuit is Clifford; switches to
     a QHybrid (CPU+GPU) dense backend on the first non-Clifford gate.
 
-    The is_clifford property reflects QInterface.isClifford() — a type-level
-    flag that is always True for this engine class (it IS a Clifford-type
-    interface). It does NOT toggle to False on dense fallback.
-
+    The is_clifford property lets callers check which mode is active.
     set_t_injection enables the near-Clifford T-injection gadget for
     circuits with few T gates (Clifford+T / RZ workloads).
     """
 
-    def __init__(
-        self,
-        qubitCount: int = 0,
-        isCpuGpuHybrid: bool = True,
-        isOpenCL: bool = True,
-        isHostPointer: bool = False,
-        isSparse: bool = False,
-    ) -> None:
-        """Create a stabilizer-hybrid simulator. Flags select the dense fallback engine."""
+    def __init__(self, qubitCount: int = 0, isCpuGpuHybrid: bool = True, isOpenCL: bool = True, isHostPointer: bool = False, isSparse: bool = False) -> None:
+        """
+        Create a stabilizer-hybrid simulator. Flags select the dense
+        fallback engine — same semantics as the matching flags on
+        QrackSimulator.
+        """
 
     def __repr__(self) -> str: ...
-    def __enter__(self) -> QrackStabilizerHybrid: ...
-    def __exit__(self, exc_type: object | None, exc_val: object | None, exc_tb: object | None) -> None: ...
-
-    # ── Clifford single-qubit gates ──────────────────────────────────────────
 
     def h(self, qubit: int) -> None:
         """Hadamard gate."""
 
     def x(self, qubit: int) -> None:
-        """Pauli X."""
+        """Pauli X (bit flip) gate."""
 
     def y(self, qubit: int) -> None:
-        """Pauli Y."""
+        """Pauli Y gate."""
 
     def z(self, qubit: int) -> None:
-        """Pauli Z."""
+        """Pauli Z (phase flip) gate."""
 
     def s(self, qubit: int) -> None:
-        """S gate (phase π/2)."""
+        """S gate — phase shift π/2."""
 
     def sdg(self, qubit: int) -> None:
-        """S† (inverse S)."""
+        """S† (inverse S) gate."""
 
     def sx(self, qubit: int) -> None:
-        """√X gate."""
+        """√X gate (half-X). Native Qiskit basis gate."""
 
     def sxdg(self, qubit: int) -> None:
-        """√X†."""
-
-    # ── Non-Clifford single-qubit gates (trigger dense fallback) ────────────
-
-    def t(self, qubit: int) -> None:
-        """T gate — phase shift π/4. Triggers dense fallback if not near-Clifford."""
-
-    def tdg(self, qubit: int) -> None:
-        """T† gate. Triggers dense fallback if not near-Clifford."""
-
-    def rx(self, angle: float, qubit: int) -> None:
-        """Rotate around X axis by angle radians."""
-
-    def ry(self, angle: float, qubit: int) -> None:
-        """Rotate around Y axis by angle radians."""
-
-    def rz(self, angle: float, qubit: int) -> None:
-        """Rotate around Z axis by angle radians."""
-
-    def r1(self, angle: float, qubit: int) -> None:
-        """Phase rotation: apply e^(i·angle) to |1> state."""
-
-    def u(self, theta: float, phi: float, lam: float, qubit: int) -> None:
-        """General single-qubit unitary U(θ,φ,λ)."""
-
-    def u2(self, phi: float, lam: float, qubit: int) -> None:
-        """U2 gate: U(π/2, φ, λ)."""
-
-    # ── Two-qubit gates ──────────────────────────────────────────────────────
+        """√X† gate (inverse √X)."""
 
     def cnot(self, control: int, target: int) -> None:
         """Controlled-NOT (CNOT / CX) gate."""
@@ -880,23 +830,62 @@ class QrackStabilizerHybrid:
     def iswap(self, qubit1: int, qubit2: int) -> None:
         """iSWAP gate."""
 
+    def ccnot(self, control1: int, control2: int, target: int) -> None:
+        """Toffoli (CCX / CCNOT) gate."""
+
     def mcx(self, controls: Sequence[int], target: int) -> None:
-        """Multiply-controlled X."""
+        """Multiply-controlled X. Fires when all controls are |1>."""
+
+    def macx(self, controls: Sequence[int], target: int) -> None:
+        """Anti-controlled X. Fires when all controls are |0>."""
 
     def mcy(self, controls: Sequence[int], target: int) -> None:
         """Multiply-controlled Y."""
 
-    def mcz(self, controls: Sequence[int], target: int) -> None:
-        """Multiply-controlled Z."""
-
-    def macx(self, controls: Sequence[int], target: int) -> None:
-        """Anti-controlled X."""
-
     def macy(self, controls: Sequence[int], target: int) -> None:
         """Anti-controlled Y."""
 
+    def mcz(self, controls: Sequence[int], target: int) -> None:
+        """Multiply-controlled Z."""
+
     def macz(self, controls: Sequence[int], target: int) -> None:
         """Anti-controlled Z."""
+
+    def mch(self, controls: Sequence[int], target: int) -> None:
+        """Multiply-controlled H."""
+
+    def mach(self, controls: Sequence[int], target: int) -> None:
+        """Anti-controlled H. Fires when all controls are |0>."""
+
+    def t(self, qubit: int) -> None:
+        """T gate — phase shift π/4."""
+
+    def tdg(self, qubit: int) -> None:
+        """T† (inverse T) gate."""
+
+    def rx(self, angle: float, qubit: int) -> None:
+        """Rotate around X axis by angle radians. Equiv: exp(-i·angle/2·X)."""
+
+    def ry(self, angle: float, qubit: int) -> None:
+        """Rotate around Y axis by angle radians."""
+
+    def rz(self, angle: float, qubit: int) -> None:
+        """Rotate around Z axis by angle radians."""
+
+    def r1(self, angle: float, qubit: int) -> None:
+        """Phase rotation: apply e^(i·angle) to |1> state."""
+
+    def u(self, theta: float, phi: float, lam: float, qubit: int) -> None:
+        """General single-qubit unitary: U(θ,φ,λ). Decomposes to RZ·RY·RZ."""
+
+    def u2(self, phi: float, lam: float, qubit: int) -> None:
+        """U2 gate: U(π/2, φ, λ)."""
+
+    def mcrz(self, angle: float, controls: Sequence[int], target: int) -> None:
+        """Multiply-controlled RZ."""
+
+    def mcu(self, controls: Sequence[int], target: int, theta: float, phi: float, lam: float) -> None:
+        """Multiply-controlled U(θ,φ,λ) gate."""
 
     def mtrx(self, matrix: Sequence[complex], qubit: int) -> None:
         """Apply arbitrary 2x2 unitary. matrix is [m00, m01, m10, m11] row-major."""
@@ -908,9 +897,9 @@ class QrackStabilizerHybrid:
         """Anti-controlled arbitrary 2x2 unitary."""
 
     def multiplex1_mtrx(self, controls: Sequence[int], mtrxs: Sequence[complex], target: int) -> None:
-        """Uniformly-controlled single-qubit gate."""
-
-    # ── Measurement ─────────────────────────────────────────────────────────
+        """
+        Uniformly-controlled single-qubit gate. mtrxs is a flat list of 4 * 2**len(controls) complex values — one 2x2 unitary per control permutation, in row-major order.
+        """
 
     def measure(self, qubit: int) -> bool:
         """Measure qubit. Returns True=|1>, False=|0>. Collapses state."""
@@ -919,43 +908,85 @@ class QrackStabilizerHybrid:
         """Measure all qubits. Returns list[bool], LSB first."""
 
     def force_measure(self, qubit: int, result: bool) -> bool:
-        """Force measurement outcome without random draw."""
+        """
+        Force measurement outcome. Projects state to result without random draw.
+        """
 
     def prob(self, qubit: int) -> float:
         """Probability of |1> for qubit. Does NOT collapse state."""
 
     def prob_all(self) -> list[float]:
-        """Per-qubit |1> probabilities for all qubits."""
+        """Per-qubit |1> probabilities for all qubits. Does NOT collapse state."""
 
-    # ── Pauli observables ────────────────────────────────────────────────────
+    def measure_shots(self, qubits: Sequence[int], shots: int) -> dict[int, int]:
+        """
+        Sample 'shots' measurements of 'qubits' without collapsing state.
+        Returns dict[int, int]: measurement result (integer bit pattern) → count.
+        """
 
     def measure_pauli(self, basis: Pauli, qubit: int) -> bool:
-        """Measure a qubit in the specified Pauli basis."""
+        """
+        Measure a qubit in the specified Pauli basis.
+
+        Rotates the qubit into the computational basis, measures, and
+        rotates back. Returns True if the rotated qubit collapsed to |1>.
+        The state is collapsed in the chosen basis.
+        """
 
     def exp_val(self, basis: Pauli, qubit: int) -> float:
-        """Single-qubit Pauli expectation value."""
+        """
+        Single-qubit Pauli expectation value. Result is in [-1.0, +1.0].
+        Does not collapse the state.
+        """
 
     def exp_val_pauli(self, paulis: Sequence[Pauli], qubits: Sequence[int]) -> float:
-        """Expectation value of a Pauli tensor product observable."""
+        """
+        Expectation value of a Pauli tensor product observable.
+
+        Returns <ψ|P₀⊗P₁⊗…⊗Pₙ|ψ>. Result is in [-1.0, +1.0].
+        Does not collapse the state.
+        """
 
     def variance_pauli(self, paulis: Sequence[Pauli], qubits: Sequence[int]) -> float:
-        """Variance of a Pauli tensor product observable."""
+        """
+        Variance of a Pauli tensor product observable.
 
-    # ── State access ─────────────────────────────────────────────────────────
+        For a Pauli operator P (P² = I), Var(P) = 1 − <P>².
+        Result is in [0.0, 1.0]. Does not collapse the state.
+        """
 
-    def _state_vector_impl(self) -> NDArray[numpy.complex64]:
-        """Raw state vector snapshot (use the state_vector property instead)."""
+    def exp_val_all(self, basis: Pauli) -> float:
+        """Expectation value of the same Pauli operator applied to every qubit."""
 
-    def _probabilities_impl(self) -> NDArray[numpy.float32]:
-        """Raw probabilities snapshot (use the probabilities property instead)."""
+    def exp_val_floats(self, qubits: Sequence[int], weights: Sequence[float]) -> float:
+        """
+        Expectation value of a weighted single-qubit observable.
+
+        weights must have length 2 * len(qubits): [w_|0> for q0, w_|1> for q0, w_|0> for q1, ...]
+        """
+
+    def variance_floats(self, qubits: Sequence[int], weights: Sequence[float]) -> float:
+        """
+        Variance of a weighted single-qubit observable. See exp_val_floats for weight convention.
+        """
+
+    def _state_vector_impl(self) -> Annotated[NDArray[numpy.complex64], dict(shape=(None,))]:
+        """Internal: backing function for the state_vector property."""
+
+    def _probabilities_impl(self) -> Annotated[NDArray[numpy.float32], dict(shape=(None,))]:
+        """Internal: backing function for the probabilities property."""
 
     def get_amplitude(self, index: int) -> complex:
-        """Get the complex amplitude of a specific basis state."""
+        """
+        Get the complex amplitude of a specific basis state by integer index.
+        Does not collapse the state.
+        """
 
     def set_amplitude(self, index: int, amplitude: complex) -> None:
-        """Set the complex amplitude of a specific basis state."""
-
-    # ── Properties and configuration ─────────────────────────────────────────
+        """
+        Set the complex amplitude of a specific basis state.
+        Does NOT re-normalise — call update_running_norm() if needed.
+        """
 
     @property
     def num_qubits(self) -> int:
@@ -964,27 +995,32 @@ class QrackStabilizerHybrid:
     @property
     def is_clifford(self) -> bool:
         """
-        Type-level Clifford flag (always True for QrackStabilizerHybrid).
-
-        Reflects QInterface.isClifford() which returns True for any stabilizer-
-        type engine interface regardless of whether the internal dense fallback
-        has been triggered by a non-Clifford gate.
+        True if the engine is currently in stabilizer (Clifford) mode.
+        Becomes False after the first non-Clifford gate forces the
+        fallback to dense simulation.
         """
 
     def set_t_injection(self, use_gadget: bool) -> None:
         """
         Enable or disable the T-injection gadget for near-Clifford circuits.
-
-        With the gadget enabled (default), T gates and small-angle rotations
-        are deferred using a Clifford+T approach before the dense fallback
-        is triggered.
+        With the gadget enabled, T gates are deferred as long as possible
+        using a Clifford+T simulation approach before triggering the
+        dense fallback.
         """
 
     def set_use_exact_near_clifford(self, exact: bool) -> None:
-        """Toggle exact near-Clifford simulation path."""
+        """
+        Toggle exact near-Clifford simulation. When True, Qrack uses an
+        exact (slower) path for near-Clifford circuits instead of the
+        approximate gadget approach.
+        """
 
     def reset_all(self) -> None:
         """Reset all qubits to |0...0>."""
 
     def set_permutation(self, permutation: int) -> None:
         """Reset state to the computational basis state |permutation>."""
+
+    def __enter__(self) -> QrackStabilizerHybrid: ...
+
+    def __exit__(self, exc_type: object | None, exc_val: object | None, exc_tb: object | None) -> None: ...

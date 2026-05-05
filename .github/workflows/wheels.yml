@@ -9,6 +9,38 @@ on:
   workflow_dispatch:
 
 jobs:
+  check_stubs:
+    name: Check stub freshness
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Qrack (CPU-only source build)
+        run: bash scripts/install_qrack.sh --cpu
+
+      - name: Install build deps
+        run: pip install nanobind scikit-build-core
+
+      - name: Build and install qrackbind
+        run: pip install --no-build-isolation -e .
+
+      - name: Regenerate stubs
+        run: |
+          python -m nanobind.stubgen \
+            -m qrackbind._core \
+            --include-private \
+            -O /tmp/stubs_fresh
+
+      - name: Fail if committed stub differs from generated stub
+        run: |
+          diff src/qrackbind/_core.pyi /tmp/stubs_fresh/_core.pyi \
+            || (echo "::error::_core.pyi is out of date. Run 'just stubs' locally and commit the result." && exit 1)
+
   build_wheels:
     name: Build wheels (Linux x86_64)
     runs-on: ubuntu-latest

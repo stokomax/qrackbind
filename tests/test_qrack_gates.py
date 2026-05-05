@@ -534,6 +534,78 @@ def test_ccnot_neither_control_no_flip():
     assert sim.prob(2) == pytest.approx(0.0, abs=ABS)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Multi-controlled Hadamard: mch and mach
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── mch — multiply-controlled H ───────────────────────────────────────────────
+
+def test_mch_control_zero_no_effect():
+    """mch with control |0> leaves target unchanged."""
+    sim = QrackSimulator(qubitCount=2)
+    sim.mch([0], 1)
+    assert sim.prob(1) == pytest.approx(0.0, abs=ABS)
+
+
+def test_mch_control_one_applies_h():
+    """mch with control |1> puts target into superposition."""
+    sim = QrackSimulator(qubitCount=2)
+    sim.x(0)
+    sim.mch([0], 1)
+    assert sim.prob(1) == pytest.approx(0.5, abs=ABS)
+
+
+def test_mch_two_controls_both_one_applies_h():
+    """mch with two controls, both |1>, applies H to target."""
+    sim = QrackSimulator(qubitCount=3)
+    sim.x(0)
+    sim.x(1)
+    sim.mch([0, 1], 2)
+    assert sim.prob(2) == pytest.approx(0.5, abs=ABS)
+
+
+def test_mch_two_controls_one_missing_no_effect():
+    """mch with two controls, only one |1>, does not fire."""
+    sim = QrackSimulator(qubitCount=3)
+    sim.x(0)
+    sim.mch([0, 1], 2)
+    assert sim.prob(2) == pytest.approx(0.0, abs=ABS)
+
+
+def test_mch_involution_via_double_application():
+    """mch·mch = I (H is self-inverse), so applying twice leaves |0>."""
+    sim = QrackSimulator(qubitCount=2)
+    sim.x(0)
+    sim.mch([0], 1)
+    sim.mch([0], 1)
+    assert sim.prob(1) == pytest.approx(0.0, abs=ABS)
+
+
+# ── mach — anti-controlled H ──────────────────────────────────────────────────
+
+def test_mach_control_zero_applies_h():
+    """mach (anti-controlled H) fires when control is |0>, putting target into superposition."""
+    sim = QrackSimulator(qubitCount=2)
+    sim.mach([0], 1)
+    assert sim.prob(1) == pytest.approx(0.5, abs=ABS)
+
+
+def test_mach_control_one_no_effect():
+    """mach does not fire when control is |1>."""
+    sim = QrackSimulator(qubitCount=2)
+    sim.x(0)
+    sim.mach([0], 1)
+    assert sim.prob(1) == pytest.approx(0.0, abs=ABS)
+
+
+def test_mach_involution_via_double_application():
+    """mach·mach = I, so applying twice leaves |0> when control is |0>."""
+    sim = QrackSimulator(qubitCount=2)
+    sim.mach([0], 1)
+    sim.mach([0], 1)
+    assert sim.prob(1) == pytest.approx(0.0, abs=ABS)
+
+
 def test_ccnot_involution():
     sim = QrackSimulator(qubitCount=3)
     sim.x(0)
