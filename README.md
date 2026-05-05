@@ -4,6 +4,8 @@
 
 Where pyqrack is a pure-Python wrapper that communicates with Qrack through a C shared library interface, `qrackbind` is a compiled extension module built with [nanobind](https://github.com/wjakob/nanobind). This approach provides static typing, generated `.pyi` stubs, native NumPy array integration via the DLPack protocol, and lower overhead at the Python/C++ boundary. The public API preserves the gate method names, constructor arguments, and `Pauli` enum from pyqrack, and includes deprecated aliases for the small number of methods that have been renamed, so existing pyqrack code requires minimal changes to run against `qrackbind`.
 
+Please expect changes while the build, installation and distribution tooling is matured. Python wheels are currently published on [Github](https://github.com/stokomax/releases). Until this packages gets wider usage, the publishing to PyPI is being held back.  
+
 ### Motivations
 
 `qrackbind` addresses three primary motivations: providing a Python interface to Qrack that is compatible with AI code generation tooling, establishing a typed and performant substrate for framework integrations with PennyLane, Qiskit, and QuEra Bloqade, and improving on the runtime characteristics of the existing pyqrack binding through a compiled nanobind extension.
@@ -190,16 +192,6 @@ just test     # run the test suite
 # or without just:
 uv run build
 uv run test
-```
-
-**Variant builds** (pass custom CMake flags through scikit-build-core):
-
-```bash
-just build-cpu      # CPU only, no OpenCL
-just build-cuda     # CUDA GPU
-just build-double   # double-precision float
-just build-debug    # debug symbols
-just build-no-simd  # disable SSE3/AVX (for compatibility testing)
 ```
 
 Or via `uv` directly:
@@ -723,7 +715,7 @@ Cross-session knowledge management was handled through [Obsidian](https://obsidi
 ## Contact
 
 **Martin Stokoe**  
-[martin@stokoe.net](mailto:martin@stokoe.net) · [LinkedIn](https://linkedin.com/in/martinstokoe)
+[martin@stokoe.net](mailto:martin@stokoe.net) · [LinkedIn](https://www.linkedin.com/in/martinstokoe)
 
 ## License
 
