@@ -172,6 +172,9 @@ class QrackSimulator:
     def mch(self, controls: Sequence[int], target: int) -> None:
         """Multiply-controlled H."""
 
+    def mach(self, controls: Sequence[int], target: int) -> None:
+        """Anti-controlled H. Fires when all controls are |0>."""
+
     def mcrz(self, angle: float, controls: Sequence[int], target: int) -> None:
         """Multiply-controlled RZ."""
 
@@ -566,19 +569,22 @@ class GateType(enum.Enum):
     MCZ = 20
     """Multi-controlled Z — last qubit is target"""
 
-    SWAP = 21
+    MCH = 21
+    """Multi-controlled H — last qubit is target"""
+
+    SWAP = 22
     """SWAP gate — 2 qubits"""
 
-    ISWAP = 22
+    ISWAP = 23
     """iSWAP gate — not yet implemented"""
 
-    U = 23
+    U = 24
     """Arbitrary unitary U(θ, φ, λ) — 3 angle params"""
 
-    Mtrx = 24
+    Mtrx = 25
     """Arbitrary 2x2 unitary — 8 float params (4 complex)"""
 
-    MCMtrx = 25
+    MCMtrx = 26
     """Multi-controlled arbitrary 2x2 — 8 float params"""
 
 class QrackCircuit:
@@ -729,6 +735,9 @@ class QrackStabilizer:
     def mcz(self, controls: Sequence[int], target: int) -> None:
         """Multiply-controlled Z."""
 
+    def mch(self, controls: Sequence[int], target: int) -> None:
+        """Multiply-controlled H."""
+
     def macx(self, controls: Sequence[int], target: int) -> None:
         """Anti-controlled X."""
 
@@ -737,6 +746,9 @@ class QrackStabilizer:
 
     def macz(self, controls: Sequence[int], target: int) -> None:
         """Anti-controlled Z."""
+
+    def mach(self, controls: Sequence[int], target: int) -> None:
+        """Anti-controlled H. Fires when all controls are |0>."""
 
     # ── Measurement ─────────────────────────────────────────────────────────
 
@@ -889,6 +901,9 @@ class QrackStabilizerHybrid:
     def mcz(self, controls: Sequence[int], target: int) -> None:
         """Multiply-controlled Z."""
 
+    def mch(self, controls: Sequence[int], target: int) -> None:
+        """Multiply-controlled H."""
+
     def macx(self, controls: Sequence[int], target: int) -> None:
         """Anti-controlled X."""
 
@@ -897,6 +912,9 @@ class QrackStabilizerHybrid:
 
     def macz(self, controls: Sequence[int], target: int) -> None:
         """Anti-controlled Z."""
+
+    def mach(self, controls: Sequence[int], target: int) -> None:
+        """Anti-controlled H. Fires when all controls are |0>."""
 
     def mtrx(self, matrix: Sequence[complex], qubit: int) -> None:
         """Apply arbitrary 2x2 unitary. matrix is [m00, m01, m10, m11] row-major."""

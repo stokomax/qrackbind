@@ -199,6 +199,13 @@ void add_clifford_two_qubit(nb::class_<WrapperT>& cls)
                 w.sim->MCMtrx(controls, H_MTRX, tgt);
             },
             nb::arg("controls"), nb::arg("target"), "Multiply-controlled H.")
+
+        // ── mach — anti-controlled Hadamard ──────────────────────────────────
+        .def("mach",
+            [](WrapperT& w, std::vector<bitLenInt> controls, bitLenInt tgt) {
+                w.sim->MACMtrx(controls, H_MTRX, tgt);
+            },
+            nb::arg("controls"), nb::arg("target"), "Anti-controlled H. Fires when all controls are |0>.")
     ;
 }
 
