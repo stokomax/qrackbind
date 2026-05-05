@@ -33,7 +33,7 @@ jobs:
             cmake -B /tmp/qrack_build -S /tmp/qrack_src -G Ninja
             -DCMAKE_BUILD_TYPE=Release -DENABLE_OPENCL=ON -DENABLE_CUDA=OFF
             -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=/usr/local &&
-            cmake --build /tmp/qrack_build --parallel 4 &&
+            cmake --build /tmp/qrack_build --parallel $(nproc) &&
             cmake --install /tmp/qrack_build &&
             ldconfig
           CIBW_ENVIRONMENT: >

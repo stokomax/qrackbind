@@ -160,10 +160,11 @@ cibuild cores=`nproc`:
 # Faster than 'cibuild' — skips ocl-icd-devel and sets ENABLE_OPENCL=OFF.
 # Useful for smoke-testing the packaging pipeline without GPU infrastructure.
 cibuild-cpu cores=`nproc`:
-    CIBW_BEFORE_ALL="dnf install -y cmake gcc-c++ git make && \
+    CIBW_BEFORE_ALL="set -e && \
+      dnf install -y cmake gcc-c++ git ninja-build vim-common && \
       git clone --depth=1 --branch vm6502q.v10.7.0 \
         https://github.com/unitaryfoundation/qrack.git /tmp/qrack_src && \
-      cmake -S /tmp/qrack_src -B /tmp/qrack_build \
+      cmake -S /tmp/qrack_src -B /tmp/qrack_build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release -DENABLE_OPENCL=OFF \
         -DCMAKE_INSTALL_PREFIX=/usr/local && \
       cmake --build /tmp/qrack_build --parallel {{cores}} && \
@@ -198,3 +199,4 @@ publish:
 
 wheel:
     uv build --wheel --no-build-isolation
+    just retag
