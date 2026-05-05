@@ -120,10 +120,20 @@ endif()
 
 # Install directive for scikit-build-core
 install(TARGETS _core LIBRARY DESTINATION ${SKBUILD_PROJECT_NAME})
-# NOTE: nanobind stubgen currently aborts while introspecting this module
-# after adding cross-referenced QrackCircuit/QrackSimulator bindings. Until
-# that is isolated, install the maintained source-tree stubs so wheel builds
-# are not blocked by stub generation.
+
+# Generate _core.pyi stubs from the built extension.
+# --include-private is required to emit _state_vector_impl and
+# _probabilities_impl, which are called by the Python-level property
+# wrappers in __init__.py and must be visible to static type checkers.
+nanobind_add_stub(
+    _core_stub
+    MODULE _core
+    OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/${SKBUILD_PROJECT_NAME}/_core.pyi
+    PYTHON_PATH $<TARGET_FILE_DIR:_core>
+    DEPENDS _core
+    MARKER_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/${SKBUILD_PROJECT_NAME}/py.typed
+    INCLUDE_PRIVATE
+)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/qrackbind/_core.pyi DESTINATION ${SKBUILD_PROJECT_NAME})
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/qrackbind/py.typed DESTINATION ${SKBUILD_PROJECT_NAME})
 
