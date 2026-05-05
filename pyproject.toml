@@ -1,6 +1,6 @@
 [project]
 name = "qrackbind"
-version = "0.2.2"
+version = "0.2.3"
 description = "nanobind Python bindings for the Qrack quantum simulator"
 readme = "README.md"
 license = { text = "MIT" }
@@ -80,7 +80,6 @@ manylinux-x86_64-image = "manylinux_2_34"
 # symbol used by libqrack.a comes from glibc 2.34, producing a wheel that
 # truly runs on manylinux_2_34+ (AlmaLinux 9, Ubuntu 22.04+, etc.)
 #
-# -j2 limits peak memory pressure during heavy C++ template compilation.
 # Expect this step to take roughly 10–20 minutes.
 before-all = """
 set -e

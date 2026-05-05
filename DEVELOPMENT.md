@@ -198,14 +198,12 @@ build-related ones:
 |---|---|
 | `just dev` | Editable install — fastest iteration loop |
 | `just install` | Clean release install (`rm -rf build/` first) |
-| `just build` | Build a wheel into `dist/` (default config) |
-| `just build-debug` | `cmake.build-type=Debug` |
-| `just build-verbose` | Verbose ninja + DEBUG-level build logs |
-| `just build-cpu` | `ENABLE_OPENCL=OFF` (CPU only) |
-| `just build-cuda` | `ENABLE_CUDA=ON` (NVIDIA GPU) |
-| `just build-double` | `FPPOW=6` (double precision) |
-| `just build-no-simd` | Disable SSE3 + AVX for compatibility |
-| `just build-define KEY=VAL` | Pass an arbitrary `-DKEY=VAL` to CMake |
+| `just build` | Build a wheel into `dist/` (default config), then retag |
+| `just build-debug` | `cmake.build-type=Debug` install into venv |
+| `just build-verbose` | Verbose ninja + DEBUG-level build logs, installed into venv |
+| `just build-define KEY=VAL` | Pass an arbitrary `-DKEY=VAL` to CMake, installed into venv |
+| `just cibuild [cores]` | Build a manylinux_2_34 wheel via cibuildwheel + Docker (OpenCL enabled), then retag |
+| `just cibuild-cpu [cores]` | Same but `ENABLE_OPENCL=OFF` — faster, no GPU infrastructure needed |
 | `just stubs` | Regenerate `.pyi` via `nanobind.stubgen` |
 | `just check-stubs` | `stubs` + `mypy` against the generated stubs |
 | `just test` | `just install` + `uv run pytest` |

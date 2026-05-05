@@ -105,6 +105,10 @@ nanobind_add_module(
   bindings/stabilizer.cpp
 )
 
+target_compile_definitions(_core PRIVATE
+    VERSION_INFO="${SKBUILD_PROJECT_VERSION}"
+)
+
 target_include_directories(_core PRIVATE ${QRACK_INCLUDE})
 target_link_libraries(_core PRIVATE ${QRACK_LIB})
 if(OpenCL_FOUND)
