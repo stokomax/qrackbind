@@ -25,7 +25,7 @@ jobs:
           # compiled on glibc 2.39 and references __isoc23_strtol (unversioned,
           # glibc 2.38+), which auditwheel cannot detect. We build from source
           # instead so the library uses only glibc 2.34 symbols.
-          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_34"
+          CIBW_MANYLINUX_X86_64_IMAGE: "quay.io/pypa/manylinux_2_34_x86_64"
           CIBW_BEFORE_ALL: >
             dnf install -y cmake git ninja-build ocl-icd-devel vim-common &&
             curl -fsSL https://raw.githubusercontent.com/KhronosGroup/OpenCL-CLHPP/v2.0.16/include/CL/opencl.hpp
