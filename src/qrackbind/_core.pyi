@@ -7,6 +7,12 @@ from typing import Annotated
 import numpy
 from numpy.typing import NDArray
 
+from qrackbind import (
+    QrackArgumentError as QrackArgumentError,
+    QrackException as QrackException,
+    QrackQubitError as QrackQubitError
+)
+
 
 class Pauli(enum.IntEnum):
     """
