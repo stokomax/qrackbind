@@ -62,9 +62,9 @@ info:
     echo "=== ldconfig path ==="
     ldconfig -p 2>/dev/null | grep qrack || echo "libqrack: not on ldconfig path"
 
-install:
+install cores=`nproc`:
     rm -rf build/
-    uv pip install . --no-build-isolation
+    CMAKE_BUILD_PARALLEL_LEVEL={{cores}} uv pip install . --no-build-isolation
 
 # Compile C++, create Python wheel and run nanobind stubgen
 build:
@@ -109,7 +109,7 @@ test-fast *args="":
 # --include-private keeps _state_vector_impl and _probabilities_impl, which
 # are called by the QrackSimulator / QrackStabilizerHybrid property wrappers
 # in __init__.py and must appear in the stub for pyright to resolve them.
-stubs *args="": install
+stubs cores="2" *args="": (install cores)
     uv run python -m nanobind.stubgen \
         -m {{package}}._core \
         --include-private \
@@ -182,10 +182,10 @@ cibuild-cpu cores=`nproc`:
 #          isolated environment with that interpreter (downloaded automatically
 #          if not present) and install the wheel into it, then run a quick
 #          import check — confirming the abi3 claim without re-building.
-smoke_test:
+smoke_test cores="2":
     #!/usr/bin/env bash
     set -euo pipefail
-    just cibuild-cpu 6
+    just cibuild-cpu {{cores}}
     wheel=$(ls wheelhouse/{{package}}*.whl | head -1)
     echo "Wheel: $wheel"
     for py in 3.12 3.13 3.14; do
