@@ -147,8 +147,9 @@ __all__ = [
     "QrackStabilizer",
     "QrackStabilizerHybrid",
 ]
+from importlib.metadata import version as _version, PackageNotFoundError as _PackageNotFoundError
+
 try:
-    from importlib.metadata import version as _version, PackageNotFoundError as _PackageNotFoundError
     __version__ = _version("qrackbind")
 except _PackageNotFoundError:
     __version__ = "unknown"
