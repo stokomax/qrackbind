@@ -4,7 +4,9 @@
 
 Where pyqrack is a pure-Python wrapper that communicates with Qrack through a C shared library interface, `qrackbind` is a compiled extension module built with [nanobind](https://github.com/wjakob/nanobind). This approach provides static typing, generated `.pyi` stubs, native NumPy array integration via the DLPack protocol, and lower overhead at the Python/C++ boundary. The public API preserves the gate method names, constructor arguments, and `Pauli` enum from pyqrack, and includes deprecated aliases for the small number of methods that have been renamed, so existing pyqrack code requires minimal changes to run against `qrackbind`.
 
-Please expect changes while the build, installation and distribution tooling is matured. Python wheels are currently published on [Github](https://github.com/stokomax/releases). Until this packages gets wider usage, the publishing to PyPI is being held back.  
+> [!NOTE]
+>
+>Please expect changes while the build, installation and distribution tooling is matured. Python wheels are currently published on [Github](https://github.com/stokomax/>releases). Until this packages gets wider usage, the publishing to PyPI is being held back.  
 
 ### Motivations
 
